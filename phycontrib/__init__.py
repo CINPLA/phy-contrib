@@ -14,6 +14,7 @@ import shutil
 
 from .kwik import KwikGUIPlugin, KwikController  # noqa
 from .template import TemplateGUIPlugin, TemplateController  # noqa
+from .neo import NeoGUIPlugin, NeoController  # noqa
 from . import utils  # noqa
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ def _copy_gui_state(gui_name, module_name, config_dir=None):
 def _copy_all_gui_states():
     _copy_gui_state('KwikGUI', 'kwik')
     _copy_gui_state('TemplateGUI', 'template')
+    _copy_gui_state('NeoGUI', 'neo')
 
 
 # Copy default states when importing the package.
