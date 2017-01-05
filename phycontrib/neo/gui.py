@@ -32,12 +32,17 @@ from phy.utils import Bunch, IPlugin, EventEmitter
 from phy.utils._color import ColorSelector
 from phy.utils._misc import _read_python
 from phy.utils.cli import _run_cmd, _add_log_file
+from phy.utils.tempdir import TemporaryDirectory
 
 from .model import NeoModel
 from ..utils import attach_plugins
 
 logger = logging.getLogger(__name__)
 
+try:
+    from klusta.launch import cluster
+except ImportError:  # pragma: no cover
+    logger.warn("Package klusta not installed: the KwikGUI will not work.")
 
 #------------------------------------------------------------------------------
 # Utils and views
