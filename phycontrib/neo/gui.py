@@ -9,6 +9,7 @@
 
 import logging
 from operator import itemgetter
+import os
 import os.path as op
 
 import click
@@ -18,8 +19,8 @@ from phy.cluster.supervisor import Supervisor
 from phy.cluster.views import (WaveformView,
                             #    FeatureView,
                             #    TraceView,
-                            #    CorrelogramView,
-                            #    ScatterView,
+                               CorrelogramView,
+                               ScatterView,
                                select_traces,
                                )
 from phy.cluster.views.trace import _iter_spike_waveforms
@@ -27,7 +28,7 @@ from phy.gui import create_app, run_app, GUI
 from phy.io.array import (Selector,
                           )
 from phy.io.context import Context, _cache_methods
-# from phy.stats import correlograms
+from phy.stats import correlograms
 from phy.utils import Bunch, IPlugin, EventEmitter
 from phy.utils._color import ColorSelector
 from phy.utils._misc import _read_python
@@ -48,24 +49,24 @@ except ImportError:  # pragma: no cover
 # Utils and views
 #------------------------------------------------------------------------------
 
-# class NeoFeatureView(ScatterView):
-#     _callback_delay = 100
-#
-#     def _get_data(self, cluster_ids):
-#         if len(cluster_ids) != 2:
-#             return []
-#         b = self.coords(cluster_ids)
-#         return [Bunch(x=b.x0, y=b.y0), Bunch(x=b.x1, y=b.y1)]
-#
-#
-# class AmplitudeView(ScatterView):
-#     def _plot_points(self, bunchs, data_bounds):
-#         super(AmplitudeView, self)._plot_points(bunchs, data_bounds)
-#         liney = 1.
-#         self.lines(pos=[[data_bounds[0], liney, data_bounds[2], liney]],
-#                    data_bounds=data_bounds,
-#                    color=(1., 1., 1., .5),
-                #    )
+class NeoFeatureView(ScatterView):
+    _callback_delay = 100
+
+    def _get_data(self, cluster_ids):
+        if len(cluster_ids) != 2:
+            return []
+        b = self.coords(cluster_ids)
+        return [Bunch(x=b.x0, y=b.y0), Bunch(x=b.x1, y=b.y1)]
+
+
+class AmplitudeView(ScatterView):
+    def _plot_points(self, bunchs, data_bounds):
+        super(AmplitudeView, self)._plot_points(bunchs, data_bounds)
+        liney = 1.
+        self.lines(pos=[[data_bounds[0], liney, data_bounds[2], liney]],
+                   data_bounds=data_bounds,
+                   color=(1., 1., 1., .5),
+                   )
 
 
 #------------------------------------------------------------------------------
@@ -89,6 +90,12 @@ class NeoController(EventEmitter):
         super(NeoController, self).__init__()
         assert data_path
         data_path = op.realpath(data_path)
+        # HACK to get the gui to load the right n_spikes etc
+        dir_path = op.dirname(op.realpath(op.expanduser(data_path)))
+        stupid_file = op.join(dir_path,'.phy', 'spikes_per_cluster.pkl')
+        if op.exists(stupid_file):
+            os.remove(stupid_file)
+
         self.model = NeoModel(data_path, **kwargs)
         self.distance_max = _get_distance_max(self.model.channel_positions)
         self.cache_dir = op.join(self.model.dir_path, '.phy')
@@ -222,7 +229,6 @@ class NeoController(EventEmitter):
                                                 )
         channel_ids = self.get_best_channels(cluster_id)
         data = self.model.get_waveforms(spike_ids, channel_ids)
-        print(data.shape)
         return Bunch(data=data,
                      channel_ids=channel_ids,
                      channel_positions=pos[channel_ids],
@@ -363,43 +369,43 @@ class NeoController(EventEmitter):
     # Correlograms
     # -------------------------------------------------------------------------
 
-    # def _get_correlograms(self, cluster_ids, bin_size, window_size):
-    #     spike_ids = self.selector.select_spikes(cluster_ids,
-    #                                             self.n_spikes_correlograms,
-    #                                             subset='random',
-    #                                             )
-    #     st = self.model.spike_times[spike_ids]
-    #     sc = self.supervisor.clustering.spike_clusters[spike_ids]
-    #     return correlograms(st,
-    #                         sc,
-    #                         sample_rate=self.model.sample_rate,
-    #                         cluster_ids=cluster_ids,
-    #                         bin_size=bin_size,
-    #                         window_size=window_size,
-    #                         )
-    #
-    # def add_correlogram_view(self, gui):
-    #     m = self.model
-    #     v = CorrelogramView(correlograms=self._get_correlograms,
-    #                         sample_rate=m.sample_rate,
-    #                         )
-    #     return self._add_view(gui, v)
+    def _get_correlograms(self, cluster_ids, bin_size, window_size):
+        spike_ids = self.selector.select_spikes(cluster_ids,
+                                                self.n_spikes_correlograms,
+                                                subset='random',
+                                                )
+        st = self.model.spike_times[spike_ids]
+        sc = self.supervisor.clustering.spike_clusters[spike_ids]
+        return correlograms(st,
+                            sc,
+                            sample_rate=self.model.sample_rate,
+                            cluster_ids=cluster_ids,
+                            bin_size=bin_size,
+                            window_size=window_size,
+                            )
+
+    def add_correlogram_view(self, gui):
+        m = self.model
+        v = CorrelogramView(correlograms=self._get_correlograms,
+                            sample_rate=m.sample_rate,
+                            )
+        return self._add_view(gui, v)
 
     # Amplitudes
     # -------------------------------------------------------------------------
 
-    # def _get_amplitudes(self, cluster_id):
-    #     n = self.n_spikes_amplitudes
-    #     m = self.model
-    #     spike_ids = self.selector.select_spikes([cluster_id], n)
-    #     x = m.spike_times[spike_ids]
-    #     y = m.amplitudes[spike_ids]
-    #     return Bunch(x=x, y=y, data_bounds=(0., 0., m.duration, y.max()))
-    #
-    # def add_amplitude_view(self, gui):
-    #     v = AmplitudeView(coords=self._get_amplitudes,
-    #                       )
-    #     return self._add_view(gui, v)
+    def _get_amplitudes(self, cluster_id):
+        n = self.n_spikes_amplitudes
+        m = self.model
+        spike_ids = self.selector.select_spikes([cluster_id], n)
+        x = m.spike_times[spike_ids]
+        y = m.amplitudes[spike_ids]
+        return Bunch(x=x, y=y, data_bounds=(0., 0., m.duration, y.max()))
+
+    def add_amplitude_view(self, gui):
+        v = AmplitudeView(coords=self._get_amplitudes,
+                          )
+        return self._add_view(gui, v)
 
     # GUI
     # -------------------------------------------------------------------------
@@ -415,9 +421,9 @@ class NeoController(EventEmitter):
         self.add_waveform_view(gui)
         # if self.model.features is not None:
         #     self.add_feature_view(gui)
-        # self.add_correlogram_view(gui)
-        # if self.model.amplitudes is not None:
-        #     self.add_amplitude_view(gui)
+        self.add_correlogram_view(gui)
+        if self.model.amplitudes is not None:
+            self.add_amplitude_view(gui)
 
         # Save the memcache when closing the GUI.
         @gui.connect_

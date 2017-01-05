@@ -23,11 +23,13 @@ class NeoModel(object):
         dir_path = (op.dirname(op.realpath(op.expanduser(data_path)))
                     if data_path else os.getcwd())
         self.data_path = data_path
-        self.kwik_path = op.splitext(data_path)[0]+'.kwik'
-        self.kk2_metadata = {}
         self.dir_path = dir_path
         self.__dict__.update(kwargs)
         self._load_data()
+        # HACK to get recluster to work
+        self.kwik_path = op.splitext(data_path)[0]+'.kwik'
+        self.kk2_metadata = {}
+        self.all_features_masks = 0
 
     def describe(self):
         def _print(name, value):
@@ -35,7 +37,7 @@ class NeoModel(object):
 
         _print('Data file', self.data_path)
         _print('Number of channels', len(self.chx.index))
-        _print('Duration', '{}'.format(self.seg.duration))
+        _print('Duration', '{}'.format(self.duration))
         _print('Number of spikes', self.n_spikes)
         _print('Available channel groups', self.avail_groups)
 
@@ -45,6 +47,7 @@ class NeoModel(object):
         if self.segment_num is None:
             self.segment_num = 0 # TODO find the right seg num
         self.seg = blk.segments[self.segment_num]
+        self.duration = self.seg.duration.rescale('s').magnitude
 
         if not all(['channel_group' in st.channel_index.annotations
                     for st in self.seg.spiketrains]):
@@ -79,6 +82,8 @@ class NeoModel(object):
 
         self.amplitudes = self._load_amplitudes()#[self.sorted_idxs]
         assert self.amplitudes.shape == (ns,)
+
+        self.sample_rate = self.sptrs[0].sampling_rate.rescale('Hz').magnitude
 
         # TODO load positino from params
         n_chan = len(self.chx.index)
