@@ -80,19 +80,15 @@ class NeoController(EventEmitter):
     n_spikes_amplitudes = 10000
     n_spikes_correlograms = 100000
 
-    def __init__(self, data_path=None, config_dir=None, model=None, **kwargs):
+    def __init__(self, data_path, config_dir=None, **kwargs):
         super(NeoController, self).__init__()
-        if model is None:
-            assert data_path
-            data_path = op.realpath(data_path)
-            self.model = NeoModel(data_path, **kwargs)
-        else:
-            self.model = model
+        assert data_path
+        data_path = op.realpath(data_path)
+        self.model = NeoModel(data_path, **kwargs)
         self.distance_max = _get_distance_max(self.model.channel_positions)
         self.cache_dir = op.join(self.model.dir_path, '.phy')
         self.context = Context(self.cache_dir)
         self.config_dir = config_dir
-
         self._set_cache()
         self.supervisor = self._set_supervisor()
         self.selector = self._set_selector()
@@ -109,13 +105,19 @@ class NeoController(EventEmitter):
     def _set_cache(self):
         memcached = ()
         cached = ()
+        # memcached = ('get_best_channels',
+        #              'get_probe_depth',
+        #              '_get_mean_waveforms',
+        #              )
+        # cached = ('_get_waveforms',
+        #           )
         _cache_methods(self, memcached, cached)
 
     def _set_supervisor(self):
         # Load the new cluster id.
         new_cluster_id = self.context.load('new_cluster_id'). \
             get('new_cluster_id', None)
-        cluster_groups = self.model.get_metadata('group')
+        cluster_groups = self.model.cluster_groups
         supervisor = Supervisor(self.model.spike_clusters,
                                 similarity=self.similarity,
                                 cluster_groups=cluster_groups,
@@ -123,37 +125,36 @@ class NeoController(EventEmitter):
                                 context=self.context,
                                 )
 
-        # Load the non-group metadata from the model to the cluster_meta.
-        # for name in self.model.metadata_fields:
-        #     if name == 'group':
-        #         continue
-        #     values = self.model.get_metadata(name)
-        #     for cluster_id, value in values.items():
-        #         supervisor.cluster_meta.set(name, [cluster_id], value,
-        #                                     add_to_stack=False)
+        @supervisor.connect
+        def on_create_cluster_views():
 
-        # @supervisor.connect
-        # def on_create_cluster_views():
-        #     supervisor.add_column(self.get_best_channel, name='channel')
-        #     supervisor.add_column(self.get_probe_depth, name='depth')
-        #
-        #     @supervisor.actions.add(shortcut='shift+ctrl+k')
-        #     def split_init(cluster_ids=None):
-        #         """Split a cluster according to the original templates."""
-        #         if cluster_ids is None:
-        #             cluster_ids = supervisor.selected
-        #         s = supervisor.clustering.spikes_in_clusters(cluster_ids)
-        #         supervisor.split(s, self.model.spike_templates[s])
+            supervisor.add_column(self.get_best_channel, name='channel')
+            supervisor.add_column(self.get_probe_depth, name='depth')
+
+            @supervisor.actions.add
+            def recluster():
+                """Relaunch KlustaKwik on the selected clusters."""
+                # Selected clusters.
+                cluster_ids = supervisor.selected
+                spike_ids = self.selector.select_spikes(cluster_ids)
+                logger.info("Running KlustaKwik on %d spikes.", len(spike_ids))
+
+                # Run KK2 in a temporary directory to avoid side effects.
+                n = 10
+                with TemporaryDirectory() as tempdir:
+                    spike_clusters, metadata = cluster(self.model,
+                                                       spike_ids,
+                                                       num_starting_clusters=n,
+                                                       tempdir=tempdir,
+                                                       )
+                self.supervisor.split(spike_ids, spike_clusters)
 
         # Save.
         @supervisor.connect
         def on_request_save(spike_clusters, groups, *labels):
             """Save the modified data."""
-            # Save the clusters.
-            self.model.save_spike_clusters(spike_clusters)
-            # Save cluster metadata.
-            for name, values in labels:
-                self.model.save_metadata(name, values)
+            groups = {c: g.title() for c, g in groups.items()}
+            self.model.save(spike_clusters, groups)
 
         return supervisor
 
@@ -427,8 +428,10 @@ class NeoController(EventEmitter):
 # Neo GUI plugin
 #------------------------------------------------------------------------------
 
-def _run(data_path):  # pragma: no cover
-    controller = NeoController(data_path)
+def _run(data_path, channel_group, segment_num):  # pragma: no cover
+    controller = NeoController(data_path,
+                               channel_group=channel_group,
+                               segment_num=segment_num)
     gui = controller.create_gui()
     gui.show()
     run_app()
@@ -441,11 +444,13 @@ class NeoGUIPlugin(IPlugin):
 
     def attach_to_cli(self, cli):
 
-        # Create the `phy cluster-manual file.kwik` command.
+        # Create the `phy cluster-manual file.neo` command.
         @cli.command('neo-gui')  # pragma: no cover
         @click.argument('NEO-path', type=click.Path(exists=True))
+        @click.option('--channel-group', type=int)
+        @click.option('--segment-num', type=int)
         @click.pass_context
-        def gui(ctx, neo_path):
+        def gui(ctx, neo_path, channel_group=None, segment_num=None):
             """Launch the NEO GUI on a NEO readable file."""
 
             # Create a `phy.log` log file with DEBUG level.
@@ -453,10 +458,17 @@ class NeoGUIPlugin(IPlugin):
 
             create_app()
 
-            _run_cmd('_run(neo_path)', ctx, globals(), locals())
+            _run_cmd('_run(neo_path, channel_group, segment_num)',
+                     ctx, globals(), locals())
 
         @cli.command('neo-describe')
         @click.argument('NEO-path', type=click.Path(exists=True))
-        def describe(neo_path):
+        @click.option('--channel-group', type=int,
+                      help='channel group')
+        @click.option('--segment-num', type=int,
+                      help='segment num')
+        def describe(neo_path, channel_group=None, segment_num=None):
             """Describe a NEO dataset."""
-            NeoModel(neo_path).describe()
+            NeoModel(neo_path,
+                     **{'channel_group': channel_group,
+                        'segment_num': segment_num}).describe()
