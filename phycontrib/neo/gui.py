@@ -17,8 +17,7 @@ import numpy as np
 
 from phy.cluster.supervisor import Supervisor
 from phy.cluster.views import (WaveformView,
-                            #    FeatureView,
-                            #    TraceView,
+                               FeatureView,
                                CorrelogramView,
                                ScatterView,
                                select_traces,
@@ -41,7 +40,7 @@ from ..utils import attach_plugins
 logger = logging.getLogger(__name__)
 
 try:
-    from klusta.launch import cluster
+    from klusta.klustakwik import klustakwik
 except ImportError:  # pragma: no cover
     logger.warn("Package klusta not installed: the KwikGUI will not work.")
 
@@ -86,7 +85,8 @@ class NeoController(EventEmitter):
     n_spikes_amplitudes = 10000
     n_spikes_correlograms = 100000
 
-    def __init__(self, data_path, config_dir=None, **kwargs):
+    def __init__(self, data_path, config_dir=None, channel_group=None,
+                 segment_num=None, **kwargs):
         super(NeoController, self).__init__()
         assert data_path
         data_path = op.realpath(data_path)
@@ -96,7 +96,7 @@ class NeoController(EventEmitter):
         if op.exists(stupid_file):
             os.remove(stupid_file)
 
-        self.model = NeoModel(data_path, **kwargs)
+        self.model = NeoModel(data_path, channel_group, segment_num, **kwargs)
         self.distance_max = _get_distance_max(self.model.channel_positions)
         self.cache_dir = op.join(self.model.dir_path, '.phy')
         self.context = Context(self.cache_dir)
@@ -147,18 +147,17 @@ class NeoController(EventEmitter):
             def recluster():
                 """Relaunch KlustaKwik on the selected clusters."""
                 # Selected clusters.
-                cluster_ids = supervisor.selected
+                cluster_ids = supervisor.selected # TODO can you have multiselect here?
                 spike_ids = self.selector.select_spikes(cluster_ids)
                 logger.info("Running KlustaKwik on %d spikes.", len(spike_ids))
+                channel_ids = self.get_best_channels(cluster_ids) # TODO sending several cluster_ids to get best channels ?
 
-                # Run KK2 in a temporary directory to avoid side effects.
-                n = 10
-                with TemporaryDirectory() as tempdir:
-                    spike_clusters, metadata = cluster(self.model,
-                                                       spike_ids,
-                                                       num_starting_clusters=n,
-                                                       tempdir=tempdir,
-                                                       )
+                features, masks = self.model.get_features_masks(spike_ids,
+                                                                channel_ids)
+                assert features.shape == masks.shape
+                spike_clusters, metadata = klustakwik(features=features,
+                                                      masks=masks,
+                                                     )
                 self.supervisor.split(spike_ids, spike_clusters)
 
         # Save.
@@ -184,14 +183,17 @@ class NeoController(EventEmitter):
     # -------------------------------------------------------------------------
 
     def get_best_channel(self, cluster_id):
-        return self.get_best_channels(cluster_id)[0]
+        channel_ids = self.get_best_channels(cluster_id)
+        amps = self.model.amplitudes.mean(axis=0)
+        channel_id = np.argmax(amps)
+        return channel_id
 
     def get_best_channels(self, cluster_id):
         # mm = self._get_mean_waveforms(cluster_id)
         # channel_ids = np.argsort(mm)[::-1]
         # channel_ids = channel_ids[mm[channel_ids] > .1]
         # return channel_ids
-        return np.arange(4)
+        return np.arange(self.model.n_chans)
 
     def get_cluster_position(self, cluster_id):
         channel_id = self.get_best_channels(cluster_id)[0]
@@ -259,112 +261,41 @@ class NeoController(EventEmitter):
     # Features
     # -------------------------------------------------------------------------
 
-    # def _get_spike_ids(self, cluster_id=None, load_all=None):
-    #     nsf = self.n_spikes_features
-    #     if cluster_id is None:
-    #         # Background points.
-    #         ns = self.model.n_spikes
-    #         return np.arange(0, ns, max(1, ns // nsf))
-    #     else:
-    #         # Load all spikes from the cluster if load_all is True.
-    #         n = nsf if not load_all else None
-    #         return self.selector.select_spikes([cluster_id], n)
-    #
-    # def _get_spike_times(self, cluster_id=None):
-    #     spike_ids = self._get_spike_ids(cluster_id)
-    #     return Bunch(data=self.model.spike_times[spike_ids],
-    #                  lim=(0., self.model.duration))
-    #
-    # def _get_features(self, cluster_id=None, channel_ids=None, load_all=None):
-    #     spike_ids = self._get_spike_ids(cluster_id, load_all=load_all)
-    #     # Use the best channels only if a cluster is specified and
-    #     # channels are not specified.
-    #     if cluster_id is not None and channel_ids is None:
-    #         channel_ids = self.get_best_channels(cluster_id)
-    #     data = self.model.get_features(spike_ids, channel_ids)
-    #     return Bunch(data=data,
-    #                  spike_ids=spike_ids,
-    #                  channel_ids=channel_ids,
-    #                  )
-    #
-    # def add_feature_view(self, gui):
-    #     v = FeatureView(features=self._get_features,
-    #                     attributes={'time': self._get_spike_times}
-    #                     )
-    #     return self._add_view(gui, v)
+    def _get_spike_ids(self, cluster_id=None, load_all=None):
+        nsf = self.n_spikes_features
+        if cluster_id is None:
+            # Background points.
+            ns = self.model.n_spikes
+            return np.arange(0, ns, max(1, ns // nsf))
+        else:
+            # Load all spikes from the cluster if load_all is True.
+            n = nsf if not load_all else None
+            return self.selector.select_spikes([cluster_id], n)
 
+    def _get_spike_times(self, cluster_id=None):
+        spike_ids = self._get_spike_ids(cluster_id)
+        return Bunch(data=self.model.spike_times[spike_ids],
+                     lim=(0., self.model.duration))
 
-    # Traces
-    # -------------------------------------------------------------------------
-    #
-    # def _get_traces(self, interval):
-    #     """Get traces and spike waveforms."""
-    #     k = self.model.n_samples_templates
-    #     m = self.model
-    #     c = m.channel_vertical_order
-    #
-    #     traces_interval = select_traces(m.traces, interval,
-    #                                     sample_rate=m.sample_rate)
-    #     # Reorder vertically.
-    #     traces_interval = traces_interval[:, c]
-    #     out = Bunch(data=traces_interval)
-    #     out.waveforms = []
-    #
-    #     def gbc(cluster_id):
-    #         return c[self.get_best_channels(cluster_id)]
-    #
-    #     for b in _iter_spike_waveforms(interval=interval,
-    #                                    traces_interval=traces_interval,
-    #                                    model=self.model,
-    #                                    supervisor=self.supervisor,
-    #                                    color_selector=self.color_selector,
-    #                                    n_samples_waveforms=k,
-    #                                    get_best_channels=gbc,
-    #                                    show_all_spikes=self._show_all_spikes,
-    #                                    ):
-    #         i = b.spike_id
-    #         # Compute the residual: waveform - amplitude * template.
-    #         residual = b.copy()
-    #         template_id = m.spike_templates[i]
-    #         template = m.get_template(template_id).template
-    #         amplitude = m.amplitudes[i]
-    #         residual.data = residual.data - amplitude * template
-    #         out.waveforms.extend([b, residual])
-    #     return out
-    #
-    # def _jump_to_spike(self, view, delta=+1):
-    #     """Jump to next or previous spike from the selected clusters."""
-    #     m = self.model
-    #     cluster_ids = self.supervisor.selected
-    #     if len(cluster_ids) == 0:
-    #         return
-    #     spc = self.supervisor.clustering.spikes_per_cluster
-    #     spike_ids = spc[cluster_ids[0]]
-    #     spike_times = m.spike_times[spike_ids]
-    #     ind = np.searchsorted(spike_times, view.time)
-    #     n = len(spike_times)
-    #     view.go_to(spike_times[(ind + delta) % n])
-    #
-    #
-    #     @v.actions.add(shortcut='alt+pgdown')
-    #     def go_to_next_spike():
-    #         """Jump to the next spike from the first selected cluster."""
-    #         self._jump_to_spike(v, +1)
-    #
-    #     @v.actions.add(shortcut='alt+pgup')
-    #     def go_to_previous_spike():
-    #         """Jump to the previous spike from the first selected cluster."""
-    #         self._jump_to_spike(v, -1)
-    #
-    #     v.actions.separator()
-    #
-    #     @v.actions.add(shortcut='alt+s')
-    #     def toggle_highlighted_spikes():
-    #         """Toggle between showing all spikes or selected spikes."""
-    #         self._show_all_spikes = not self._show_all_spikes
-    #         v.set_interval(force_update=True)
-    #
-    #     return v
+    def _get_features(self, cluster_id=None, channel_ids=None, load_all=None):
+        spike_ids = self._get_spike_ids(cluster_id, load_all=load_all)
+        # Use the best channels only if a cluster is specified and
+        # channels are not specified.
+        if cluster_id is not None and channel_ids is None:
+            channel_ids = self.get_best_channels(cluster_id)
+        f = self.model.features[spike_ids][:, channel_ids]
+        m = self.model.masks[spike_ids][:, channel_ids]
+        return Bunch(data=f,
+                     masks=m,
+                     spike_ids=spike_ids,
+                     channel_ids=channel_ids,
+                     )
+
+    def add_feature_view(self, gui):
+        v = FeatureView(features=self._get_features,
+                        attributes={'time': self._get_spike_times}
+                        )
+        return self._add_view(gui, v)
 
     # Correlograms
     # -------------------------------------------------------------------------
@@ -398,8 +329,9 @@ class NeoController(EventEmitter):
         n = self.n_spikes_amplitudes
         m = self.model
         spike_ids = self.selector.select_spikes([cluster_id], n)
+        channel_id = self.get_best_channel(cluster_id)
         x = m.spike_times[spike_ids]
-        y = m.amplitudes[spike_ids]
+        y = m.amplitudes[spike_ids, channel_id]
         return Bunch(x=x, y=y, data_bounds=(0., 0., m.duration, y.max()))
 
     def add_amplitude_view(self, gui):
@@ -419,8 +351,8 @@ class NeoController(EventEmitter):
         self.supervisor.attach(gui)
 
         self.add_waveform_view(gui)
-        # if self.model.features is not None:
-        #     self.add_feature_view(gui)
+        if self.model.features is not None:
+            self.add_feature_view(gui)
         self.add_correlogram_view(gui)
         if self.model.amplitudes is not None:
             self.add_amplitude_view(gui)
