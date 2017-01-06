@@ -109,7 +109,7 @@ class NeoModel(object):
 
     def get_features_masks(self, spike_ids, channel_ids):
         # we select the primary principal component
-        features = self.features[:,:,0]
+        features = self.features[:, :, 0]
         features = features[spike_ids, :][:, channel_ids]
         features = np.reshape(features, (len(spike_ids), len(channel_ids)))
         masks = np.ones((len(spike_ids), len(channel_ids)), dtype=bool)
@@ -144,11 +144,11 @@ class NeoModel(object):
 
     def _load_waveforms(self): # TODO this should be masks for memory saving
         logger.debug("Loading spike waveforms.")
+        import matplotlib.pyplot as plt
         wfs = np.vstack([sptr.waveforms for sptr in self.sptrs])
-        num_spikes, num_chans, samples_per_spike = wfs.shape
         assert wfs.shape[1:] == self.sptrs[0].waveforms.shape[1:]
-        wfs = wfs.reshape(num_spikes, samples_per_spike, num_chans)
-        return wfs
+        # num_spikes, num_chans, samples_per_spike = wfs.shape
+        return wfs.swapaxes(1, 2)
 
     def _load_amplitudes(self):
         logger.debug("Loading spike amplitudes.")

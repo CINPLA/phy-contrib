@@ -242,7 +242,6 @@ class NeoController(EventEmitter):
         b['alpha'] = 1.
         return b
 
-
     def add_waveform_view(self, gui):
         v = WaveformView(waveforms=self._get_waveforms,
                          )
@@ -332,7 +331,7 @@ class NeoController(EventEmitter):
         channel_id = self.get_best_channel(cluster_id)
         x = m.spike_times[spike_ids]
         y = m.amplitudes[spike_ids, channel_id]
-        return Bunch(x=x, y=y, data_bounds=(0., 0., m.duration, y.max()))
+        return Bunch(x=x, y=y, data_bounds=(0., y.min(), m.duration, y.max()))
 
     def add_amplitude_view(self, gui):
         v = AmplitudeView(coords=self._get_amplitudes,
