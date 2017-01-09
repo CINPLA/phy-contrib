@@ -147,25 +147,29 @@ class NeoController(EventEmitter):
             def recluster():
                 """Relaunch KlustaKwik on the selected clusters."""
                 # Selected clusters.
-                cluster_ids = supervisor.selected # TODO can you have multiselect here?
+                cluster_ids = supervisor.selected  # TODO can you have multiselect here?
                 spike_ids = self.selector.select_spikes(cluster_ids)
                 logger.info("Running KlustaKwik on %d spikes.", len(spike_ids))
-                channel_ids = self.get_best_channels(cluster_ids) # TODO sending several cluster_ids to get best channels ?
+                channel_ids = self.get_best_channels(cluster_ids)  # TODO sending several cluster_ids to get best channels ?
 
                 features, masks = self.model.get_features_masks(spike_ids,
                                                                 channel_ids)
                 assert features.shape == masks.shape
                 spike_clusters, metadata = klustakwik(features=features,
                                                       masks=masks,
-                                                     )
+                                                      )
                 self.supervisor.split(spike_ids, spike_clusters)
 
         # Save.
         @supervisor.connect
         def on_request_save(spike_clusters, groups, *labels):
             """Save the modified data."""
+            # Save the clusters.
             groups = {c: g.title() for c, g in groups.items()}
-            self.model.save(spike_clusters, groups)
+            self.model.save(spike_clusters, groups, *labels)
+            # Save cluster metadata.
+            for name, values in labels:
+                self.model.save_metadata(name, values)
 
         return supervisor
 
