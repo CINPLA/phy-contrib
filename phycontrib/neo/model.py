@@ -29,9 +29,11 @@ class NeoModel(object):
         data_path = data_path or ''
         dir_path = (op.dirname(op.realpath(op.expanduser(data_path)))
                     if data_path else os.getcwd())
-        self.save_path = save_path or dir_path
+        save_path = save_path or dir_path
+        fname = op.splitext(op.split(self.data_path)[1])[0]
+        self.save_path = op.join(save_path, fname+'.exdir')
         self.data_path = data_path
-        self.fname = op.splitext(op.split(self.data_path)[1])[0]
+
         self.segment_num = segment_num
         self.channel_group = channel_group
         self.dir_path = dir_path
@@ -55,7 +57,9 @@ class NeoModel(object):
         blk = neo.Block()
         seg = neo.Segment(duration=self.duration)
         blk.segments.append(seg)
-        chx = copy.deepcopy(self.chx)
+        chx = neo.ChannelIndex(index=self.chx.index,
+                               name=self.chx.name,
+                               **self.chx.annotations)
         blk.channel_indexes.append(chx)
         for sc in np.unique(spike_clusters):
             mask = self.spike_clusters == sc
@@ -65,9 +69,34 @@ class NeoModel(object):
                                   name='cluster #%i' % sc,
                                   t_stop=self.duration,
                                   **{'cluster_id': sc})
+            sptr.channel_index = chx
+            unt = neo.Unit()
+            unt.spiketrains.append(sptr)
+            chx.units.append(unt)
             seg.spiketrains.append(sptr)
-        save_path = op.join(self.save_path, self.fname+'.exdir')
         neo.io.ExdirIO(save_path, mode='w').save(blk)
+        # save features and masks
+        self._exdir_folder = exdir.File(folder=self.save_path, mode='w')
+        self._processing = self._exdir_folder.require_group("processing")
+        self.save_spike_clusters(spike_clusters)
+
+    def save_spike_clusters(self, spike_clusters):
+        # for saving phy data directly to disc
+        grp = self.channel_group
+        ch_group = self._processing['channel_group_{}'.format(grp)]
+        clust = ch_group.create_group('Clustering')
+        clust.create_dataset('electrode_idx', self.chx.index)
+        clust.create_dataset('cluster_nums', spike_clusters)
+        clust.create_dataset('times', self.spike_times)
+
+    def save_spike_features(self, spike_clusters):
+        # for saving phy data directly to disc
+        grp = self.channel_group
+        ch_group = ch_group = self._processing['channel_group_{}'.format(grp)]
+        feat = ch_group.create_group('FeatureExtraction')
+        feat.create_dataset('electrode_idx', self.chx.index)
+        feat.create_dataset('features', self.features)
+        feat.create_dataset('times', self.spike_times)
 
     def _load_data(self):
         io = neo.get_io(self.data_path)
