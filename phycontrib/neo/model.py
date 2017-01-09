@@ -170,7 +170,7 @@ class NeoModel(object):
         import matplotlib.pyplot as plt
         wfs = np.vstack([sptr.waveforms for sptr in self.sptrs])
         assert wfs.shape[1:] == self.sptrs[0].waveforms.shape[1:]
-        # num_spikes, num_chans, samples_per_spike = wfs.shape
+        # neo: num_spikes, num_chans, samples_per_spike = wfs.shape
         return wfs.swapaxes(1, 2)
 
     def _load_amplitudes(self):
