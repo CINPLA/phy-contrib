@@ -30,7 +30,7 @@ class NeoModel(object):
         dir_path = (op.dirname(op.realpath(op.expanduser(data_path)))
                     if data_path else os.getcwd())
         save_path = save_path or dir_path
-        fname = op.splitext(op.split(self.data_path)[1])[0]
+        fname = op.splitext(op.split(data_path)[1])[0]
         self.save_path = op.join(save_path, fname+'.exdir')
         self.data_path = data_path
 
@@ -61,10 +61,11 @@ class NeoModel(object):
                                name=self.chx.name,
                                **self.chx.annotations)
         blk.channel_indexes.append(chx)
+        wf_units = self.sptrs[0].waveforms.units
         for sc in np.unique(spike_clusters):
             mask = self.spike_clusters == sc
             sptr = neo.SpikeTrain(times=self.spike_times[mask] * pq.s,
-                                  waveforms=self.waveforms[mask],
+                                  waveforms=self.waveforms[mask] * wf_units,
                                   sampling_rate=self.sample_rate * pq.Hz,
                                   name='cluster #%i' % sc,
                                   t_stop=self.duration,
@@ -74,11 +75,11 @@ class NeoModel(object):
             unt.spiketrains.append(sptr)
             chx.units.append(unt)
             seg.spiketrains.append(sptr)
-        neo.io.ExdirIO(save_path, mode='w').save(blk)
+        neo.io.ExdirIO(self.save_path, mode='w').save(blk)
         # save features and masks
-        self._exdir_folder = exdir.File(folder=self.save_path, mode='w')
-        self._processing = self._exdir_folder.require_group("processing")
-        self.save_spike_clusters(spike_clusters)
+        # self._exdir_folder = exdir.File(folder=self.save_path, mode='w')
+        # self._processing = self._exdir_folder.require_group("processing")
+        # self.save_spike_clusters(spike_clusters)
 
     def save_spike_clusters(self, spike_clusters):
         # for saving phy data directly to disc
@@ -108,13 +109,13 @@ class NeoModel(object):
         if self.segment_num is None:
             self.segment_num = 0  # TODO find the right seg num
         self.seg = blk.segments[self.segment_num]
-        self.duration = self.seg.duration.rescale('s').magnitude
+        self.duration = (self.seg.t_stop - self.seg.t_start).rescale('s').magnitude
 
-        if not all(['channel_group' in st.channel_index.annotations
+        if not all(['group_id' in st.channel_index.annotations
                     for st in self.seg.spiketrains]):
-            raise ValueError('"channel_group" must be in' +
+            raise ValueError('"group_id" must be in' +
                              ' channel_index.annotations')
-        grps = {st.channel_index.annotations['channel_group']:
+        grps = {st.channel_index.annotations['group_id']:
                 st.channel_index.name for st in self.seg.spiketrains}
         grps_ids = np.array(list(grps.keys()), dtype=int)
         self.avail_groups = np.sort(np.unique(grps_ids))
@@ -196,8 +197,8 @@ class NeoModel(object):
 
     def _load_waveforms(self):  # TODO this should be masks for memory saving
         logger.debug("Loading spike waveforms.")
-        import matplotlib.pyplot as plt
         wfs = np.vstack([sptr.waveforms for sptr in self.sptrs])
+        wfs = np.array(wfs, dtype=np.float64)
         assert wfs.shape[1:] == self.sptrs[0].waveforms.shape[1:]
         # neo: num_spikes, num_chans, samples_per_spike = wfs.shape
         return wfs.swapaxes(1, 2)
