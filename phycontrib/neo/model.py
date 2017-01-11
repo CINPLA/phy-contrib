@@ -7,6 +7,8 @@ import neo
 import quantities as pq
 import numpy as np
 import copy
+import shutil
+import exdir
 
 from phy.io.array import (_concatenate_virtual_arrays,
                           _index_of,
@@ -21,23 +23,55 @@ except ImportError:  # pragma: no cover
     logger.warn("Package klusta not installed: the KwikGUI will not work.")
 
 
+def copy_file_or_folder(fname, fname_copy):
+    if op.isfile(fname):
+        shutil.copy(fname, fname_copy)
+    if op.isdir(fname):
+        shutil.copytree(fname, fname_copy)
+
+
+def delete_file_or_folder(fname):
+    if op.isfile(fname):
+        os.remove(fname)
+    if op.isdir(fname):
+        shutil.rmtree(fname)
+
+# TODO test if saving preserves cluster id
+# TODO save group metadata
+# TODO save metadata
+# TODO make klustaexdir script that takes neo or rawdata files and saves to exdir
+# TODO save masks
+# TODO check masks
+# TODO load features and masks if exdir and exists
+# TODO save exdir without neo?
+# TODO save probe info in exdir
+
+
 class NeoModel(object):
     n_pcs = 3
 
     def __init__(self, data_path=None, channel_group=None, segment_num=None,
-                 save_path=None, **kwargs):
+                 save_path=None, save_ext='.exdir', **kwargs):
         data_path = data_path or ''
         dir_path = (op.dirname(op.realpath(op.expanduser(data_path)))
                     if data_path else os.getcwd())
         save_path = save_path or dir_path
         fname = op.splitext(op.split(data_path)[1])[0]
-        self.save_path = op.join(save_path, fname+'.exdir')
+        self.save_ext = save_ext
+        if self.save_ext[0] != '.':
+            self.save_ext = '.' + self.save_ext
+        self.save_path = op.join(save_path, fname + self.save_ext)
+        backup = self.save_path+'.bak'
+        if op.exists(backup):
+            delete_file_or_folder(backup)
+        if op.exists(self.save_path):
+            copy_file_or_folder(self.save_path, backup)
         self.data_path = data_path
 
         self.segment_num = segment_num
         self.channel_group = channel_group
         self.dir_path = dir_path
-        self.__dict__.update(kwargs)  # TODO maybe better to put keywords as arguments
+        self.__dict__.update(kwargs)
         self._load_data()
 
     def describe(self):
@@ -64,40 +98,73 @@ class NeoModel(object):
         wf_units = self.sptrs[0].waveforms.units
         for sc in np.unique(spike_clusters):
             mask = self.spike_clusters == sc
+            waveforms = np.swapaxes(self.waveforms[mask], 1, 2) * wf_units
             sptr = neo.SpikeTrain(times=self.spike_times[mask] * pq.s,
-                                  waveforms=self.waveforms[mask] * wf_units,
+                                  waveforms=waveforms,
                                   sampling_rate=self.sample_rate * pq.Hz,
                                   name='cluster #%i' % sc,
                                   t_stop=self.duration,
                                   **{'cluster_id': sc})
             sptr.channel_index = chx
-            unt = neo.Unit()
+            unt = neo.Unit(name='Unit #{}'.format(sc), **{'cluster_id': sc})
             unt.spiketrains.append(sptr)
             chx.units.append(unt)
             seg.spiketrains.append(sptr)
-        neo.io.ExdirIO(self.save_path, mode='w').save(blk)
-        # save features and masks
-        # self._exdir_folder = exdir.File(folder=self.save_path, mode='w')
-        # self._processing = self._exdir_folder.require_group("processing")
-        # self.save_spike_clusters(spike_clusters)
+        if self.save_ext == '.exdir':
+            io = neo.ExdirIO(self.save_path, 'w')
+        io.save(blk)
+        try:
+            io.close()
+        except:
+            pass  # TODO except proper error
+        if self.save_ext == '.exdir': # TODO blir cluster identitet bevart av neo.io?
+            # save features and masks
+            self._exdir_folder = exdir.File(folder=self.save_path)
+            self._processing = self._exdir_folder["processing"]
+            # self.save_spike_clusters(spike_clusters)
+            self.save_spike_features(spike_clusters)
+            # self.save_event_waveform(spike_clusters)
+            # self.save_spike_features(spike_clusters)
 
-    def save_spike_clusters(self, spike_clusters):
-        # for saving phy data directly to disc
-        grp = self.channel_group
-        ch_group = self._processing['channel_group_{}'.format(grp)]
-        clust = ch_group.create_group('Clustering')
-        clust.create_dataset('electrode_idx', self.chx.index)
-        clust.create_dataset('cluster_nums', spike_clusters)
-        clust.create_dataset('times', self.spike_times)
+    # def save_spike_clusters(self, spike_clusters):
+    #     # for saving phy data directly to disc
+    #     grp = self.channel_group
+    #     ch_group = self._processing['channel_group_{}'.format(grp)]
+    #     clust = ch_group.create_group('Clustering')
+    #     clust.create_dataset('electrode_idx', self.chx.index)
+    #     clust.create_dataset('cluster_nums', np.unique(spike_clusters))
+    #     clust.create_dataset('nums', spike_clusters)
+    #     clust.create_dataset('times', self.spike_times)
 
     def save_spike_features(self, spike_clusters):
         # for saving phy data directly to disc
-        grp = self.channel_group
-        ch_group = ch_group = self._processing['channel_group_{}'.format(grp)]
+        grp = 'channel_group_{}'.format(self.channel_group)
+        seg = 'Segment_{}'.format(self.segment_num)
+        ch_group = ch_group = self._processing[seg][grp]
         feat = ch_group.create_group('FeatureExtraction')
         feat.create_dataset('electrode_idx', self.chx.index)
         feat.create_dataset('features', self.features)
+        feat.create_dataset('masks', self.masks)
         feat.create_dataset('times', self.spike_times)
+
+    # def save_event_waveform(self, spike_times, waveforms, channel_indexes,
+    #                          sampling_rate, channel_group, t_start, t_stop):
+    #     event_wf_group = channel_group.create_group('EventWaveform')
+    #     wf_group = event_wf_group.create_group('waveform_timeseries')
+    #     wf_group.attrs['start_time'] = t_start
+    #     wf_group.attrs['stop_time'] = t_stop
+    #     wf_group.attrs['electrode_idx'] = channel_indexes
+    #     ts_data = wf_group.create_dataset("timestamps", spike_times)
+    #     wf = wf_group.create_dataset("waveforms", waveforms)
+    #     wf.attrs['sample_rate'] = sampling_rate
+
+    # def save_unit_times(self, sptrs, channel_group, t_start, t_stop):
+    #     unit_times_group = channel_group.create_group('UnitTimes')
+    #     unit_times_group.attrs['start_time'] = t_start
+    #     unit_times_group.attrs['stop_time'] = t_stop
+    #     for sptr_id, sptr in enumerate(sptrs):
+    #         times_group = unit_times_group.create_group('{}'.format(sptr_id))
+    #         ts_data = times_group.create_dataset('times', sptr.times)
 
     def _load_data(self):
         io = neo.get_io(self.data_path)
@@ -109,7 +176,7 @@ class NeoModel(object):
         if self.segment_num is None:
             self.segment_num = 0  # TODO find the right seg num
         self.seg = blk.segments[self.segment_num]
-        self.duration = (self.seg.t_stop - self.seg.t_start).rescale('s').magnitude
+        self.duration = self.seg.duration
 
         if not all(['group_id' in st.channel_index.annotations
                     for st in self.seg.spiketrains]):
@@ -142,7 +209,10 @@ class NeoModel(object):
 
         self.waveforms = self._load_waveforms()  # [self.sorted_idxs, :, :]
         assert self.waveforms.shape[::2] == (ns, self.n_chans)
-
+        
+        if op.split(self.data_path)[-1] == '.exdir':
+            pass
+            # TODO try to load features from file
         self.features, self.masks = self._load_features_masks()
 
         self.amplitudes = self._load_amplitudes()  # [self.sorted_idxs]

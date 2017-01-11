@@ -92,7 +92,7 @@ class NeoController(EventEmitter):
         data_path = op.realpath(data_path)
         # HACK to get the gui to load the right n_spikes etc
         dir_path = op.dirname(op.realpath(op.expanduser(data_path)))
-        stupid_file = op.join(dir_path,'.phy', 'spikes_per_cluster.pkl')
+        stupid_file = op.join(dir_path, '.phy', 'spikes_per_cluster.pkl')
         if op.exists(stupid_file):
             os.remove(stupid_file)
 
@@ -166,10 +166,12 @@ class NeoController(EventEmitter):
             """Save the modified data."""
             # Save the clusters.
             groups = {c: g.title() for c, g in groups.items()}
-            self.model.save(spike_clusters, groups, *labels)
+            print(groups)
+            # self.model.save(spike_clusters, groups, *labels)
+            self.model.save(spike_clusters)
             # Save cluster metadata.
-            for name, values in labels:
-                self.model.save_metadata(name, values)
+            # for name, values in labels:
+            #     self.model.save_metadata(name, values)
 
         return supervisor
 
@@ -192,7 +194,7 @@ class NeoController(EventEmitter):
         channel_id = np.argmax(amps)
         return channel_id
 
-    def get_best_channels(self, cluster_id):
+    def get_best_channels(self, cluster_id):  # TODO
         # mm = self._get_mean_waveforms(cluster_id)
         # channel_ids = np.argsort(mm)[::-1]
         # channel_ids = channel_ids[mm[channel_ids] > .1]
