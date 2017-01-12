@@ -293,74 +293,77 @@ def neo_klusta(*args, **kwargs):
     clusters = model.cluster(np.arange(model.n_spikes), model.channel_ids)
     model.save(spike_clusters=clusters)
 
+class NeoKlusta(IPlugin):
+    """Create the `phy neo-klusta` command for NEO files."""
 
-@click.command()
-@click.argument('neo_file',
-                type=click.Path(exists=True, file_okay=True, dir_okay=True),
-                )
-@click.option('--output-dir',
-              type=click.Path(file_okay=False, dir_okay=True),
-              help='Output directory.',
-              )
-@click.option('--interval',
-              type=click.Tuple([float, float]),
-              help='Interval in seconds, e.g. `--interval 0 2`.',
-              default=(None, None),
-              )
-@click.option('--channel-group',
-              type=click.INT,
-              help='Channel group to cluster (all by default).',
-              )
-@click.option('--detect-only',
-              help='Only do spike detection.',
-              default=False,
-              is_flag=True,
-              )
-@click.option('--cluster-only',
-              help='Only do automatic clustering.',
-              default=False,
-              is_flag=True,
-              )
-@click.option('--legacy-output',
-              help=('Save `.res` and `.clu` files in addition to `.kwik`.'),
-              default=False,
-              is_flag=True,
-              )
-@click.option('--overwrite',
-              help='Overwrite the Kwik file.',
-              default=False,
-              is_flag=True,
-              )
-@click.option('--debug',
-              help='Use the DEBUG logging level.',
-              default=False,
-              is_flag=True,
-              )
-@click.version_option(version=__version_git__)
-@click.help_option()
-def main(*args, **kwargs):
-    """Spikesort a dataset.
+    def attach_to_cli(self, cli):
 
-    By default, perform spike detection (with SpikeDetekt) and automatic
-    clustering (with KlustaKwik2). You can also choose to run only one step.
+        # Create the `phy cluster-manual file.neo` command.
+        @cli.command('neo-klusta')  # pragma: no cover
+        @click.argument('NEO-path', type=click.Path(exists=True))
+        @click.option('--output-dir',
+                      type=click.Path(file_okay=False, dir_okay=True),
+                      help='Output directory.',
+                      )
+        @click.option('--interval',
+                      type=click.Tuple([float, float]),
+                      help='Interval in seconds, e.g. `--interval 0 2`.',
+                      default=(None, None),
+                      )
+        @click.option('--channel-group',
+                      type=click.INT,
+                      help='Channel group to cluster (all by default).',
+                      )
+        @click.option('--detect-only',
+                      help='Only do spike detection.',
+                      default=False,
+                      is_flag=True,
+                      )
+        @click.option('--cluster-only',
+                      help='Only do automatic clustering.',
+                      default=False,
+                      is_flag=True,
+                      )
+        @click.option('--legacy-output',
+                      help=('Save `.res` and `.clu` files in addition to `.kwik`.'),
+                      default=False,
+                      is_flag=True,
+                      )
+        @click.option('--overwrite',
+                      help='Overwrite the Kwik file.',
+                      default=False,
+                      is_flag=True,
+                      )
+        @click.option('--debug',
+                      help='Use the DEBUG logging level.',
+                      default=False,
+                      is_flag=True,
+                      )
+        @click.version_option(version=__version_git__)
+        @click.help_option()
+        def main(*args, **kwargs):
+            """Spikesort a dataset.
 
-    You need to specify three pieces of information to spikesort your data:
+            By default, perform spike detection (with SpikeDetekt) and automatic
+            clustering (with KlustaKwik2). You can also choose to run only one step.
 
-    * The raw data file: typically a `.dat` file.
+            You need to specify three pieces of information to spikesort your data:
 
-    * The PRM file: a Python file with the `.prm` extension, containing the parameters for your sorting session.
+            * The raw data file: typically a `.dat` file.
 
-    * The PRB file: a Python file with the `.prb` extension, containing the layout of your probe.
+            * The PRM file: a Python file with the `.prm` extension, containing the parameters for your sorting session.
 
-    """  # noqa
+            * The PRB file: a Python file with the `.prb` extension, containing the layout of your probe.
 
-    debug = kwargs.pop('debug', None)
+            """  # noqa
 
-    # Hide the traceback unless DEBUG mode.
-    def exception_handler(exception_type, exception, traceback):
-        print("{}: {}".format(exception_type.__name__, exception))
-    if not debug:
-        sys.excepthook = exception_handler
+            debug = kwargs.pop('debug', None)
 
-    add_default_handler('DEBUG' if debug else 'INFO')
-    return neo_klusta(*args, **kwargs)
+            # Hide the traceback unless DEBUG mode.
+            def exception_handler(exception_type, exception, traceback):
+                print("{}: {}".format(exception_type.__name__, exception))
+            if not debug:
+                sys.excepthook = exception_handler
+
+            add_default_handler('DEBUG' if debug else 'INFO')
+            return neo_klusta(*args, **kwargs)

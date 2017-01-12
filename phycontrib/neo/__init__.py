@@ -8,3 +8,4 @@
 #------------------------------------------------------------------------------
 
 from .gui import NeoGUIPlugin, NeoController  # noqa
+from .neo_klusta import NeoKlusta
