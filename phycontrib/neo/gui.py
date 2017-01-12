@@ -151,7 +151,6 @@ class NeoController(EventEmitter):
                 spike_ids = self.selector.select_spikes(cluster_ids)
                 logger.info("Running KlustaKwik on %d spikes.", len(spike_ids))
                 channel_ids = self.get_best_channels(cluster_ids)  # TODO sending several cluster_ids to get best channels ?
-                print(spike_ids)
                 spike_clusters = self.model.cluster(spike_ids, channel_ids)
                 self.supervisor.split(spike_ids, spike_clusters)
 
@@ -162,6 +161,8 @@ class NeoController(EventEmitter):
             # Save the clusters.
             groups = {c: g.title() for c, g in groups.items()}
             print(groups)
+            print('*******************************')
+            print(labels)
             # self.model.save(spike_clusters, groups, *labels)
             self.model.save(spike_clusters)
             # Save cluster metadata.

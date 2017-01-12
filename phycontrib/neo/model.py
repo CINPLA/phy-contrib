@@ -252,13 +252,17 @@ class NeoModel(object):
         masks = np.ones((len(spike_ids), len(channel_ids))) # TODO fix this
         return features, masks
 
-    def cluster(self, spike_ids, channel_ids):
+    def cluster(self, spike_ids=None, channel_ids=None):
+        if spike_ids is None:
+            spike_ids = np.arange(self.n_spikes)
+        if channel_ids is None:
+            channel_ids = self.channel_ids
         features, masks = self.get_features_masks(spike_ids,
-                                                        channel_ids)
+                                                  channel_ids)
         assert features.shape == masks.shape
         spike_clusters, metadata = klustakwik(features=features,
                                               masks=masks)
-        print(metadata)
+        self.kk2_metadata = metadata
         return spike_clusters
 
     def _load_features_masks(self):
