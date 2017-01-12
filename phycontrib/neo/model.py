@@ -19,8 +19,9 @@ logger = logging.getLogger(__name__)
 
 try:
     from klusta.traces import PCA as klusta_pca
+    from klusta.klustakwik import klustakwik
 except ImportError:  # pragma: no cover
-    logger.warn("Package klusta not installed: the KwikGUI will not work.")
+    logger.warn("Package klusta not installed: the KwikModel will not work.")
 
 
 def copy_file_or_folder(fname, fname_copy):
@@ -37,6 +38,7 @@ def delete_file_or_folder(fname):
         shutil.rmtree(fname)
 
 # TODO test if saving preserves cluster id
+# TODO multiple channel_group and segments if none
 # TODO save group metadata
 # TODO save metadata
 # TODO make klustaexdir script that takes neo or rawdata files and saves to exdir
@@ -79,17 +81,21 @@ class NeoModel(object):
             print("{0: <26}{1}".format(name, value))
 
         _print('Data file', self.data_path)
-        _print('Number of channels', len(self.chx.index))
+        _print('Channel group', self.channel_group)
+        _print('Number of channels', len(self.channels))
         _print('Duration', '{}'.format(self.duration))
         _print('Number of spikes', self.n_spikes)
-        _print('Available channel groups', self.avail_groups)
+        _print('Available channel groups', self.channel_groups)
 
-    def save(self, spike_clusters):
+    def save(self, spike_clusters=None):
+        if spike_clusters is None:
+            spike_clusters = self.spike_clusters
         assert spike_clusters.shape == self.spike_clusters.shape
         assert spike_clusters.dtype == self.spike_clusters.dtype
         self.spike_clusters = spike_clusters
         blk = neo.Block()
-        seg = neo.Segment(duration=self.duration)
+        seg = neo.Segment(name='Segment_{}'.format(self.segment_num))
+        seg.duration = self.duration
         blk.segments.append(seg)
         chx = neo.ChannelIndex(index=self.chx.index,
                                name=self.chx.name,
@@ -104,6 +110,7 @@ class NeoModel(object):
                                   sampling_rate=self.sample_rate * pq.Hz,
                                   name='cluster #%i' % sc,
                                   t_stop=self.duration,
+                                  t_start=self.start_time,
                                   **{'cluster_id': sc})
             sptr.channel_index = chx
             unt = neo.Unit(name='Unit #{}'.format(sc), **{'cluster_id': sc})
@@ -119,10 +126,9 @@ class NeoModel(object):
             pass  # TODO except proper error
         if self.save_ext == '.exdir': # TODO blir cluster identitet bevart av neo.io?
             # save features and masks
-            self._exdir_folder = exdir.File(folder=self.save_path)
-            self._processing = self._exdir_folder["processing"]
+            self._exdir_save_path = exdir.File(folder=self.save_path)
             # self.save_spike_clusters(spike_clusters)
-            self.save_spike_features(spike_clusters)
+            self.save_features_masks(spike_clusters)
             # self.save_event_waveform(spike_clusters)
             # self.save_spike_features(spike_clusters)
 
@@ -136,16 +142,25 @@ class NeoModel(object):
     #     clust.create_dataset('nums', spike_clusters)
     #     clust.create_dataset('times', self.spike_times)
 
-    def save_spike_features(self, spike_clusters):
+    def save_features_masks(self, spike_clusters):
         # for saving phy data directly to disc
         grp = 'channel_group_{}'.format(self.channel_group)
         seg = 'Segment_{}'.format(self.segment_num)
-        ch_group = ch_group = self._processing[seg][grp]
+        ch_group = ch_group = self._exdir_save_path["processing"][seg][grp]
         feat = ch_group.create_group('FeatureExtraction')
         feat.create_dataset('electrode_idx', self.chx.index)
         feat.create_dataset('features', self.features)
         feat.create_dataset('masks', self.masks)
         feat.create_dataset('times', self.spike_times)
+
+    def load_features_masks(self):
+        # for saving phy data directly to disc
+        grp = 'channel_group_{}'.format(self.channel_group)
+        seg = 'Segment_{}'.format(self.segment_num)
+        ch_group = ch_group = self._exdir_data_path["processing"][seg][grp]
+        feat = ch_group['FeatureExtraction']
+        assert set(feat['times']) == set(self.spike_times)
+        return feat['features'].data, feat['masks'].data
 
     # def save_event_waveform(self, spike_times, waveforms, channel_indexes,
     #                          sampling_rate, channel_group, t_start, t_stop):
@@ -177,26 +192,28 @@ class NeoModel(object):
             self.segment_num = 0  # TODO find the right seg num
         self.seg = blk.segments[self.segment_num]
         self.duration = self.seg.duration
-
-        if not all(['group_id' in st.channel_index.annotations
-                    for st in self.seg.spiketrains]):
-            raise ValueError('"group_id" must be in' +
-                             ' channel_index.annotations')
-        grps = {st.channel_index.annotations['group_id']:
-                st.channel_index.name for st in self.seg.spiketrains}
-        grps_ids = np.array(list(grps.keys()), dtype=int)
-        self.avail_groups = np.sort(np.unique(grps_ids))
+        self.start_time = self.seg.t_start
+        if not all(['group_id' in chx.annotations
+                    for chx in blk.channel_indexes]):
+            logger.warn('"group_id" is not in channel_index.annotations ' +
+                        'counts channel_group as appended to ' +
+                        'Block.channel_indexes')
+            self._chxs = {i: chx for i, chx in enumerate(blk.channel_indexes)}
+        else:
+            self._chxs = {int(chx.annotations['group_id']): chx
+                          for chx in blk.channel_indexes}
+        self.channel_groups = list(self._chxs.keys())
         if self.channel_group is None:
-            self.channel_group = self.avail_groups[0]
-        if self.channel_group not in self.avail_groups:
+            self.channel_group = self.channel_groups[0]
+        if self.channel_group not in self.channel_groups:
             raise ValueError('channel group not available,' +
                              ' see available channel groups in neo-describe')
-        self.chx, = (chx for chx in blk.channel_indexes
-                     if chx.name == grps[self.channel_group])
+        self.chx = self._chxs[self.channel_group]
+        self.channel_ids = self.chx.index
         self.n_chans = len(self.chx.index)
 
         self.sptrs = [st for st in self.seg.spiketrains
-                      if st.channel_index.name == grps[self.channel_group]]
+                      if st.channel_index == self._chxs[self.channel_group]]
         self.sample_rate = self.sptrs[0].sampling_rate.rescale('Hz').magnitude
         # self.sorted_idxs = np.argsort(times)
         self.spike_times = self._load_spike_times()  # [self.sorted_idxs]
@@ -209,10 +226,7 @@ class NeoModel(object):
 
         self.waveforms = self._load_waveforms()  # [self.sorted_idxs, :, :]
         assert self.waveforms.shape[::2] == (ns, self.n_chans)
-        
-        if op.split(self.data_path)[-1] == '.exdir':
-            pass
-            # TODO try to load features from file
+
         self.features, self.masks = self._load_features_masks()
 
         self.amplitudes = self._load_amplitudes()  # [self.sorted_idxs]
@@ -235,12 +249,29 @@ class NeoModel(object):
         features = self.features[:, :, 0]
         features = features[spike_ids, :][:, channel_ids]
         features = np.reshape(features, (len(spike_ids), len(channel_ids)))
-        masks = np.ones((len(spike_ids), len(channel_ids)), dtype=bool)
+        masks = np.ones((len(spike_ids), len(channel_ids))) # TODO fix this
         return features, masks
+
+    def cluster(self, spike_ids, channel_ids):
+        features, masks = self.get_features_masks(spike_ids,
+                                                        channel_ids)
+        assert features.shape == masks.shape
+        spike_clusters, metadata = klustakwik(features=features,
+                                              masks=masks)
+        print(metadata)
+        return spike_clusters
 
     def _load_features_masks(self):
         logger.debug("Loading features.")
-        masks = np.ones((self.n_spikes, self.n_chans), dtype=bool)
+        if self.data_path.endswith('.exdir'):
+            self._exdir_data_path = exdir.File(folder=self.data_path)
+            features, masks = self.load_features_masks()
+        else:
+            features, masks = self.calc_features_masks()
+        return features, masks
+
+    def calc_features_masks(self):
+        masks = np.ones((self.n_spikes, self.n_chans))
         pca = klusta_pca(self.n_pcs)
         pca.fit(self.waveforms, masks)
         features = pca.transform(self.waveforms)
@@ -260,8 +291,20 @@ class NeoModel(object):
 
     def _load_spike_clusters(self):
         logger.debug("Loading spike clusters.")
-        out = np.array([i for j, sptr in enumerate(self.sptrs)
-                        for i in [j]*len(sptr)])
+        if 'cluster_id' in self.sptrs[0].annotations:
+            try:
+                out = np.array([i for sptr in self.sptrs for i in
+                               [sptr.annotations['cluster_id']]*len(sptr)])
+            except KeyError:
+                logger.debug("cluster_id not found in sptr annotations")
+                raise
+            except:
+                raise
+        else:
+            logger.debug("cluster_id not found in sptr annotations, " +
+                         "giving numbers from 0 to len(sptrs).")
+            out = np.array([i for j, sptr in enumerate(self.sptrs)
+                            for i in [j]*len(sptr)])
         # HACK sometimes out is shape (n_spikes, 1)
         return np.reshape(out, len(out))
 

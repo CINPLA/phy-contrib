@@ -40,9 +40,9 @@ from ..utils import attach_plugins
 logger = logging.getLogger(__name__)
 
 try:
-    from klusta.klustakwik import klustakwik
+    import klusta
 except ImportError:  # pragma: no cover
-    logger.warn("Package klusta not installed: the KwikGUI will not work.")
+    logger.warn("Package klusta not installed: the NeoGUI will not work.")
 
 #------------------------------------------------------------------------------
 # Utils and views
@@ -151,13 +151,8 @@ class NeoController(EventEmitter):
                 spike_ids = self.selector.select_spikes(cluster_ids)
                 logger.info("Running KlustaKwik on %d spikes.", len(spike_ids))
                 channel_ids = self.get_best_channels(cluster_ids)  # TODO sending several cluster_ids to get best channels ?
-
-                features, masks = self.model.get_features_masks(spike_ids,
-                                                                channel_ids)
-                assert features.shape == masks.shape
-                spike_clusters, metadata = klustakwik(features=features,
-                                                      masks=masks,
-                                                      )
+                print(spike_ids)
+                spike_clusters = self.model.cluster(spike_ids, channel_ids)
                 self.supervisor.split(spike_ids, spike_clusters)
 
         # Save.
