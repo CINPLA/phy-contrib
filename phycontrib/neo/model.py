@@ -87,7 +87,7 @@ class NeoModel(object):
         _print('Number of spikes', self.n_spikes)
         _print('Available channel groups', self.channel_groups)
 
-    def save(self, spike_clusters=None):
+    def save(self, spike_clusters=None, groups=None, *labels):
         if spike_clusters is None:
             spike_clusters = self.spike_clusters
         assert spike_clusters.shape == self.spike_clusters.shape
@@ -97,9 +97,11 @@ class NeoModel(object):
         seg = neo.Segment(name='Segment_{}'.format(self.segment_num))
         seg.duration = self.duration
         blk.segments.append(seg)
+        if labels:
+            metadata = {name: values for name, values in labels}
         chx = neo.ChannelIndex(index=self.chx.index,
                                name=self.chx.name,
-                               **self.chx.annotations)
+                               **self.chx.annotations.update(metadata))
         blk.channel_indexes.append(chx)
         wf_units = self.sptrs[0].waveforms.units
         for sc in np.unique(spike_clusters):
@@ -111,7 +113,8 @@ class NeoModel(object):
                                   name='cluster #%i' % sc,
                                   t_stop=self.duration,
                                   t_start=self.start_time,
-                                  **{'cluster_id': sc})
+                                  **{'cluster_id': sc,
+                                     'group': group[sc]})
             sptr.channel_index = chx
             unt = neo.Unit(name='Unit #{}'.format(sc), **{'cluster_id': sc})
             unt.spiketrains.append(sptr)

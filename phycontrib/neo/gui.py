@@ -160,14 +160,7 @@ class NeoController(EventEmitter):
             """Save the modified data."""
             # Save the clusters.
             groups = {c: g.title() for c, g in groups.items()}
-            print(groups)
-            print('*******************************')
-            print(labels)
-            # self.model.save(spike_clusters, groups, *labels)
-            self.model.save(spike_clusters)
-            # Save cluster metadata.
-            # for name, values in labels:
-            #     self.model.save_metadata(name, values)
+            self.model.save(spike_clusters, groups, *labels)
 
         return supervisor
 
