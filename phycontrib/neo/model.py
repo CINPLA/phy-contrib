@@ -97,14 +97,19 @@ class NeoModel(object):
         seg = neo.Segment(name='Segment_{}'.format(self.segment_num))
         seg.duration = self.duration
         blk.segments.append(seg)
+        metadata = self.chx.annotations
         if labels:
-            metadata = {name: values for name, values in labels}
+            metadata.update({name: values for name, values in labels})
         chx = neo.ChannelIndex(index=self.chx.index,
                                name=self.chx.name,
-                               **self.chx.annotations.update(metadata))
+                               **metadata)
         blk.channel_indexes.append(chx)
         wf_units = self.sptrs[0].waveforms.units
-        for sc in np.unique(spike_clusters):
+        clusters = np.unique(spike_clusters)
+        if groups is None:
+            groups = self.cluster_groups
+        self.cluster_groups = groups
+        for sc in clusters:
             mask = self.spike_clusters == sc
             waveforms = np.swapaxes(self.waveforms[mask], 1, 2) * wf_units
             sptr = neo.SpikeTrain(times=self.spike_times[mask] * pq.s,
@@ -114,9 +119,10 @@ class NeoModel(object):
                                   t_stop=self.duration,
                                   t_start=self.start_time,
                                   **{'cluster_id': sc,
-                                     'group': group[sc]})
+                                     'cluster_group': groups[sc]})
             sptr.channel_index = chx
-            unt = neo.Unit(name='Unit #{}'.format(sc), **{'cluster_id': sc})
+            unt = neo.Unit(name='Unit #{}'.format(sc),
+                           **{'cluster_id': sc, 'cluster_group': groups[sc]})
             unt.spiketrains.append(sptr)
             chx.units.append(unt)
             seg.spiketrains.append(sptr)
@@ -286,7 +292,13 @@ class NeoModel(object):
 
     def _load_cluster_groups(self):
         logger.debug("Loading cluster groups.")
-        out = {i: 'unsorted' for i in np.unique(self.spike_clusters)}
+        if 'cluster_group' in self.sptrs[0].annotations:
+            out = {sptr.annotations['cluster_id']:
+                   sptr.annotations['cluster_group'] for sptr in self.sptrs}
+        else:
+            logger.warn('No cluster_group found in spike trains, naming all' +
+                        ' "Unsorted"')
+            out = {i: 'Unsorted' for i in np.unique(self.spike_clusters)}
         return out
 
     def _load_spike_times(self):
