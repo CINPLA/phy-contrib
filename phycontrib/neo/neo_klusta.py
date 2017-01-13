@@ -24,13 +24,13 @@ logger = logging.getLogger(__name__)
 def neo_klusta(*args, **kwargs):
     assert not args
     model = NeoModel(**kwargs)
-    if kwargs['channel_group'] is not None:
+    if kwargs['channel_group'] is None:
         channel_groups = model.channel_groups
     else:
-        channel_groups = [kwargs['channel_group']]
+        channel_groups = [model.channel_group]
     for channel_group in channel_groups:
-        kwargs.pop('channel_group') # HACK so channel_group is not overwritten
-        model = NeoModel(channel_group=channel_group, **kwargs)
+        if not channel_group == model.channel_group:
+            model.load_data(channel_group)
         clusters = model.cluster(np.arange(model.n_spikes), model.channel_ids)
         model.save(spike_clusters=clusters)
 

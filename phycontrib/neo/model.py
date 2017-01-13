@@ -37,16 +37,24 @@ def delete_file_or_folder(fname):
     if op.isdir(fname):
         shutil.rmtree(fname)
 
+
+def backup(path):
+    backup = path+'.bak'
+    if op.exists(backup):
+        delete_file_or_folder(backup)
+    if op.exists(path):
+        copy_file_or_folder(path, backup)
+
 # TODO test if saving preserves cluster id
-# TODO multiple channel_group and segments if none
 # TODO save group metadata
 # TODO save metadata
-# TODO make klustaexdir script that takes neo or rawdata files and saves to exdir
+# TODO make klustaexdir script that takes rawdata files and saves to exdir
 # TODO save masks
 # TODO check masks
 # TODO load features and masks if exdir and exists
-# TODO save exdir without neo?
 # TODO save probe info in exdir
+# TODO test if sorting spike times messes up anything
+# TODO more carefully only save what is saved
 
 
 class NeoModel(object):
@@ -67,14 +75,10 @@ class NeoModel(object):
         fname, ext = op.splitext(op.split(data_path)[1])
         self.output_name = self.output_name or fname
         self.output_ext = self.output_ext or ext
-
-        backup = self.data_path+'.bak'
-        if op.exists(backup):
-            delete_file_or_folder(backup)
-        if op.exists(self.data_path):
-            copy_file_or_folder(self.data_path, backup)
         if self.output_ext[0] != '.':
             self.output_ext = '.' + self.output_ext
+
+        # backup(self.data_path)
 
         save_path = op.join(self.output_dir, self.output_name +
                             self.output_ext)
@@ -106,6 +110,9 @@ class NeoModel(object):
         self.save_path = save_path or op.join(self.output_dir,
                                               self.output_name +
                                               self.output_ext)
+        if not self.overwrite and op.exists(self.save_path):
+            raise FileExistsError('Set the overwrite flag to true')
+        # backup(self.save_path)
         logger.debug('Saving output data to {}'.format(self.save_path))
         io = neo.get_io(self.data_path)
         assert io.is_readable
@@ -114,7 +121,20 @@ class NeoModel(object):
             io.close()
         except:
             pass
-        self._load_data()
+
+        if not all(['group_id' in chx.annotations
+                    for chx in self.data_block.channel_indexes]):
+            logger.warn('"group_id" is not in channel_index.annotations ' +
+                        'counts channel_group as appended to ' +
+                        'Block.channel_indexes')
+            self._chxs = {i: chx for i, chx in
+                          enumerate(self.data_block.channel_indexes)}
+        else:
+            self._chxs = {int(chx.annotations['group_id']): chx
+                          for chx in self.data_block.channel_indexes}
+        self.channel_groups = list(self._chxs.keys())
+
+        self.load_data()
 
     def describe(self):
         def _print(name, value):
@@ -231,23 +251,15 @@ class NeoModel(object):
     #         times_group = unit_times_group.create_group('{}'.format(sptr_id))
     #         ts_data = times_group.create_dataset('times', sptr.times)
 
-    def _load_data(self):
+    def load_data(self, channel_group=None, segment_num=None):
+        self.channel_group = channel_group or self.channel_group
+        self.segment_num = segment_num or self.segment_num
         blk = self.data_block
         if self.segment_num is None:
             self.segment_num = 0  # TODO find the right seg num
         self.seg = blk.segments[self.segment_num]
         self.duration = self.seg.duration
         self.start_time = self.seg.t_start
-        if not all(['group_id' in chx.annotations
-                    for chx in blk.channel_indexes]):
-            logger.warn('"group_id" is not in channel_index.annotations ' +
-                        'counts channel_group as appended to ' +
-                        'Block.channel_indexes')
-            self._chxs = {i: chx for i, chx in enumerate(blk.channel_indexes)}
-        else:
-            self._chxs = {int(chx.annotations['group_id']): chx
-                          for chx in blk.channel_indexes}
-        self.channel_groups = list(self._chxs.keys())
         if self.channel_group is None:
             self.channel_group = self.channel_groups[0]
         if self.channel_group not in self.channel_groups:
@@ -260,21 +272,23 @@ class NeoModel(object):
         self.sptrs = [st for st in self.seg.spiketrains
                       if st.channel_index == self._chxs[self.channel_group]]
         self.sample_rate = self.sptrs[0].sampling_rate.rescale('Hz').magnitude
-        # self.sorted_idxs = np.argsort(times)
-        self.spike_times = self._load_spike_times()  # [self.sorted_idxs]
+
+        self.spike_times = self._load_spike_times()
+        sorted_idxs = np.argsort(self.spike_times)
+        self.spike_times = self.spike_times[sorted_idxs]
         ns, = self.n_spikes, = self.spike_times.shape
 
-        self.spike_clusters = self._load_spike_clusters()  # [self.sorted_idxs]
+        self.spike_clusters = self._load_spike_clusters()[sorted_idxs]
         assert self.spike_clusters.shape == (ns,)
 
         self.cluster_groups = self._load_cluster_groups()
 
-        self.waveforms = self._load_waveforms()  # [self.sorted_idxs, :, :]
-        assert self.waveforms.shape[::2] == (ns, self.n_chans)
+        self.waveforms = self._load_waveforms()[sorted_idxs, :, :]
+        assert self.waveforms.shape[::2] == (ns, self.n_chans), '{} != {}'.format(self.waveforms.shape[::2], (ns, self.n_chans))
 
-        self.features, self.masks = self._load_features_masks()
+        self.features, self.masks = self._load_features_masks() # loads from waveforms which is already sorted
 
-        self.amplitudes = self._load_amplitudes()  # [self.sorted_idxs]
+        self.amplitudes = self._load_amplitudes()
         assert self.amplitudes.shape == (ns, self.n_chans)
 
         # TODO load positino from params

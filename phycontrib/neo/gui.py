@@ -85,11 +85,10 @@ class NeoController(EventEmitter):
     n_spikes_amplitudes = 10000
     n_spikes_correlograms = 100000
 
-    def __init__(self, data_path, config_dir=None, channel_group=None,
-                 segment_num=None, **kwargs):
+    def __init__(self, data_path, config_dir=None, **kwargs):
         super(NeoController, self).__init__()
         # HACK to get the gui to load the right n_spikes etc
-        self.model = NeoModel(data_path, channel_group, segment_num, **kwargs)
+        self.model = NeoModel(data_path, **kwargs)
         stupid_file = op.join(self.model.output_dir, '.phy', 'spikes_per_cluster.pkl')
         if op.exists(stupid_file):
             os.remove(stupid_file)
@@ -362,10 +361,8 @@ class NeoController(EventEmitter):
 # Neo GUI plugin
 #------------------------------------------------------------------------------
 
-def _run(data_path, channel_group, segment_num):  # pragma: no cover
-    controller = NeoController(data_path,
-                               channel_group=channel_group,
-                               segment_num=segment_num)
+def _run(data_path, **kwargs):  # pragma: no cover
+    controller = NeoController(data_path, **kwargs)
     gui = controller.create_gui()
     gui.show()
     run_app()
@@ -381,10 +378,35 @@ class NeoGUIPlugin(IPlugin):
         # Create the `phy cluster-manual file.neo` command.
         @cli.command('neo-gui')  # pragma: no cover
         @click.argument('data-path', type=click.Path(exists=True))
-        @click.option('--channel-group', type=int)
-        @click.option('--segment-num', type=int)
+        @click.option('--output-dir',
+                      type=click.Path(file_okay=False, dir_okay=True),
+                      help='Output directory.',
+                      )
+        @click.option('--output-ext',
+                      type=click.STRING,
+                      default='.exdir',
+                      help=('Output extension, defaults to same as data-path' +
+                           ' if extension is NEO writable, .exdir if not.'),
+                      )
+        @click.option('--output-name',
+                      type=click.STRING,
+                      help='Output file basename, defaults to same as data-path.',
+                      )
+        @click.option('--channel-group',
+                      type=click.INT,
+                      help='Channel group.',
+                      )
+        @click.option('--segment-num',
+                      type=click.INT,
+                      help='Segment number.',
+                      )
+        @click.option('--overwrite',
+                      help='Overwrite the data file.',
+                      default=False,
+                      is_flag=True,
+                      )
         @click.pass_context
-        def gui(ctx, data_path, channel_group=None, segment_num=None):
+        def gui(ctx, data_path, **kwargs):
             """Launch the NEO GUI on a NEO readable file."""
 
             # Create a `phy.log` log file with DEBUG level.
@@ -392,17 +414,19 @@ class NeoGUIPlugin(IPlugin):
 
             create_app()
 
-            _run_cmd('_run(data_path, channel_group, segment_num)',
+            _run_cmd('_run(data_path, **kwargs)',
                      ctx, globals(), locals())
 
         @cli.command('neo-describe')
         @click.argument('data-path', type=click.Path(exists=True))
-        @click.option('--channel-group', type=int,
-                      help='channel group')
-        @click.option('--segment-num', type=int,
-                      help='segment num')
-        def describe(data_path, channel_group=None, segment_num=None):
+        @click.option('--channel-group',
+                      type=click.INT,
+                      help='Channel group.',
+                      )
+        @click.option('--segment-num',
+                      type=click.INT,
+                      help='Segment number.',
+                      )
+        def describe(data_path, **kwargs):
             """Describe a NEO dataset."""
-            NeoModel(neo_path,
-                     **{'channel_group': channel_group,
-                        'segment_num': segment_num}).describe()
+            NeoModel(data_path, **kwargs).describe()
