@@ -88,17 +88,14 @@ class NeoController(EventEmitter):
     def __init__(self, data_path, config_dir=None, channel_group=None,
                  segment_num=None, **kwargs):
         super(NeoController, self).__init__()
-        assert data_path
-        data_path = op.realpath(data_path)
         # HACK to get the gui to load the right n_spikes etc
-        dir_path = op.dirname(op.realpath(op.expanduser(data_path)))
-        stupid_file = op.join(dir_path, '.phy', 'spikes_per_cluster.pkl')
+        self.model = NeoModel(data_path, channel_group, segment_num, **kwargs)
+        stupid_file = op.join(self.model.output_dir, '.phy', 'spikes_per_cluster.pkl')
         if op.exists(stupid_file):
             os.remove(stupid_file)
 
-        self.model = NeoModel(data_path, channel_group, segment_num, **kwargs)
         self.distance_max = _get_distance_max(self.model.channel_positions)
-        self.cache_dir = op.join(self.model.dir_path, '.phy')
+        self.cache_dir = op.join(self.model.output_dir, '.phy')
         self.context = Context(self.cache_dir)
         self.config_dir = config_dir
         self._set_cache()
@@ -383,28 +380,28 @@ class NeoGUIPlugin(IPlugin):
 
         # Create the `phy cluster-manual file.neo` command.
         @cli.command('neo-gui')  # pragma: no cover
-        @click.argument('NEO-path', type=click.Path(exists=True))
+        @click.argument('data-path', type=click.Path(exists=True))
         @click.option('--channel-group', type=int)
         @click.option('--segment-num', type=int)
         @click.pass_context
-        def gui(ctx, neo_path, channel_group=None, segment_num=None):
+        def gui(ctx, data_path, channel_group=None, segment_num=None):
             """Launch the NEO GUI on a NEO readable file."""
 
             # Create a `phy.log` log file with DEBUG level.
-            _add_log_file(op.join(op.dirname(neo_path), 'phy.log'))
+            _add_log_file(op.join(op.dirname(data_path), 'phy.log'))
 
             create_app()
 
-            _run_cmd('_run(neo_path, channel_group, segment_num)',
+            _run_cmd('_run(data_path, channel_group, segment_num)',
                      ctx, globals(), locals())
 
         @cli.command('neo-describe')
-        @click.argument('NEO-path', type=click.Path(exists=True))
+        @click.argument('data-path', type=click.Path(exists=True))
         @click.option('--channel-group', type=int,
                       help='channel group')
         @click.option('--segment-num', type=int,
                       help='segment num')
-        def describe(neo_path, channel_group=None, segment_num=None):
+        def describe(data_path, channel_group=None, segment_num=None):
             """Describe a NEO dataset."""
             NeoModel(neo_path,
                      **{'channel_group': channel_group,

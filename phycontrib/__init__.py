@@ -14,7 +14,7 @@ import shutil
 
 from .kwik import KwikGUIPlugin, KwikController  # noqa
 from .template import TemplateGUIPlugin, TemplateController  # noqa
-from .neo import NeoGUIPlugin, NeoController  # noqa
+from .neo import NeoGUIPlugin, NeoController, NeoKlusta  # noqa
 from . import utils  # noqa
 
 logger = logging.getLogger(__name__)

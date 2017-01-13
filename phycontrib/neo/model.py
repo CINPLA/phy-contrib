@@ -52,28 +52,68 @@ def delete_file_or_folder(fname):
 class NeoModel(object):
     n_pcs = 3
 
-    def __init__(self, data_path=None, channel_group=None, segment_num=None,
-                 save_path=None, save_ext='.exdir', **kwargs):
-        data_path = data_path or ''
-        dir_path = (op.dirname(op.realpath(op.expanduser(data_path)))
-                    if data_path else os.getcwd())
-        save_path = save_path or dir_path
-        fname = op.splitext(op.split(data_path)[1])[0]
-        self.save_ext = save_ext
-        if self.save_ext[0] != '.':
-            self.save_ext = '.' + self.save_ext
-        self.save_path = op.join(save_path, fname + self.save_ext)
-        backup = self.save_path+'.bak'
-        if op.exists(backup):
-            delete_file_or_folder(backup)
-        if op.exists(self.save_path):
-            copy_file_or_folder(self.save_path, backup)
+    def __init__(self, data_path, channel_group=None, segment_num=None,
+                 output_dir=None, output_ext=None, output_name=None,
+                 **kwargs):
         self.data_path = data_path
-
         self.segment_num = segment_num
         self.channel_group = channel_group
-        self.dir_path = dir_path
-        self.__dict__.update(kwargs)
+        self.output_dir = output_dir
+        self.output_ext = output_ext
+        self.output_name = output_name
+        self.__dict__.update(kwargs) # overwrite above stuff with kwargs
+        self.output_dir = self.output_dir or op.join(os.getcwd(),
+                                                     'neo_model_output')
+        fname, ext = op.splitext(op.split(data_path)[1])
+        self.output_name = self.output_name or fname
+        self.output_ext = self.output_ext or ext
+
+        backup = self.data_path+'.bak'
+        if op.exists(backup):
+            delete_file_or_folder(backup)
+        if op.exists(self.data_path):
+            copy_file_or_folder(self.data_path, backup)
+        if self.output_ext[0] != '.':
+            self.output_ext = '.' + self.output_ext
+
+        save_path = op.join(self.output_dir, self.output_name +
+                            self.output_ext)
+
+        try:
+            io = neo.get_io(save_path, mode='w')
+        except IOError: # cannot use mode
+            try: # without mode
+                io = neo.get_io(save_path)
+            except FileNotFoundError: # file must be made, assuming this io cannot write
+                logger.warn('Given output extension requires an existing ' +
+                            'file, thus assuming it is not writable and ' +
+                            'defaulting to ExdirIO for writing')
+                self.output_ext = '.exdir'
+                save_path = None
+                io = False
+            except:
+                raise
+        if io:
+            if not io.is_writable:
+                logger.warn('Given output extension is not writable, ' +
+                            'defaulting to ExdirIO for writing')
+                try:
+                    io.close()
+                except:
+                    pass
+                self.output_ext = '.exdir'
+                save_path = None
+        self.save_path = save_path or op.join(self.output_dir,
+                                              self.output_name +
+                                              self.output_ext)
+        logger.debug('Saving output data to {}'.format(self.save_path))
+        io = neo.get_io(self.data_path)
+        assert io.is_readable
+        self.data_block = io.read_block()  # TODO params to select what to read
+        try:
+            io.close()
+        except:
+            pass
         self._load_data()
 
     def describe(self):
@@ -126,14 +166,15 @@ class NeoModel(object):
             unt.spiketrains.append(sptr)
             chx.units.append(unt)
             seg.spiketrains.append(sptr)
-        if self.save_ext == '.exdir':
-            io = neo.ExdirIO(self.save_path, 'w')
+
+        # save block to file
+        io = neo.get_io(self.save_path)
         io.save(blk)
         try:
             io.close()
         except:
             pass  # TODO except proper error
-        if self.save_ext == '.exdir': # TODO blir cluster identitet bevart av neo.io?
+        if self.output_ext == '.exdir': # TODO blir cluster identitet bevart av neo.io?
             # save features and masks
             self._exdir_save_path = exdir.File(folder=self.save_path)
             # self.save_spike_clusters(spike_clusters)
@@ -191,12 +232,7 @@ class NeoModel(object):
     #         ts_data = times_group.create_dataset('times', sptr.times)
 
     def _load_data(self):
-        io = neo.get_io(self.data_path)
-        blk = io.read_block()  # TODO params to select what to read
-        try:
-            io.close()
-        except:
-            pass
+        blk = self.data_block
         if self.segment_num is None:
             self.segment_num = 0  # TODO find the right seg num
         self.seg = blk.segments[self.segment_num]
@@ -271,6 +307,8 @@ class NeoModel(object):
         assert features.shape == masks.shape
         spike_clusters, metadata = klustakwik(features=features,
                                               masks=masks)
+        self.cluster_groups = {cl: 'Unsorted' for cl in
+                               np.unique(spike_clusters)}
         self.kk2_metadata = metadata
         return spike_clusters
 
