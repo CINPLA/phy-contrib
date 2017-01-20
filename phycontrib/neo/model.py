@@ -70,8 +70,7 @@ class NeoModel(object):
         self.output_ext = output_ext
         self.output_name = output_name
         self.__dict__.update(kwargs) # overwrite above stuff with kwargs
-        self.output_dir = self.output_dir or op.join(os.getcwd(),
-                                                     'neo_model_output')
+        self.output_dir = self.output_dir or op.split(self.data_path)[0]
         fname, ext = op.splitext(op.split(data_path)[1])
         self.output_name = self.output_name or fname
         self.output_ext = self.output_ext or ext
@@ -154,7 +153,8 @@ class NeoModel(object):
         assert spike_clusters.dtype == self.spike_clusters.dtype
         self.spike_clusters = spike_clusters
         blk = neo.Block()
-        seg = neo.Segment(name='Segment_{}'.format(self.segment_num))
+        seg = neo.Segment(name='Segment_{}'.format(self.segment_num),
+                          index=self.segment_num)
         seg.duration = self.duration
         blk.segments.append(seg)
         metadata = self.chx.annotations
@@ -196,60 +196,38 @@ class NeoModel(object):
             pass  # TODO except proper error
         if self.output_ext == '.exdir': # TODO blir cluster identitet bevart av neo.io?
             # save features and masks
-            self._exdir_save_path = exdir.File(folder=self.save_path)
-            # self.save_spike_clusters(spike_clusters)
+            group = exdir.File(folder=self.save_path)
+            self._exdir_save_group = self._find_exdir_channel_group(
+                group["processing"])
+            if self._exdir_save_group is None:
+                raise IOError('Can not find a dirctory corresponding to ' +
+                              'given segment_num {}'.format(self.segment_num) +
+                              ' and channel_group {}'.format(self.channel_group))
             self.save_features_masks(spike_clusters)
-            # self.save_event_waveform(spike_clusters)
-            # self.save_spike_features(spike_clusters)
-
-    # def save_spike_clusters(self, spike_clusters):
-    #     # for saving phy data directly to disc
-    #     grp = self.channel_group
-    #     ch_group = self._processing['channel_group_{}'.format(grp)]
-    #     clust = ch_group.create_group('Clustering')
-    #     clust.create_dataset('electrode_idx', self.chx.index)
-    #     clust.create_dataset('cluster_nums', np.unique(spike_clusters))
-    #     clust.create_dataset('nums', spike_clusters)
-    #     clust.create_dataset('times', self.spike_times)
 
     def save_features_masks(self, spike_clusters):
         # for saving phy data directly to disc
-        grp = 'channel_group_{}'.format(self.channel_group)
-        seg = 'Segment_{}'.format(self.segment_num)
-        ch_group = ch_group = self._exdir_save_path["processing"][seg][grp]
-        feat = ch_group.create_group('FeatureExtraction')
-        feat.create_dataset('electrode_idx', self.chx.index)
-        feat.create_dataset('features', self.features)
+        feat = self._exdir_save_group.create_group('FeatureExtraction')
+        feat.attrs['electrode_idx'] = self.chx.index
+        feat.create_dataset('data', self.features)
         feat.create_dataset('masks', self.masks)
         feat.create_dataset('times', self.spike_times)
 
     def load_features_masks(self):
         # for saving phy data directly to disc
-        grp = 'channel_group_{}'.format(self.channel_group)
-        seg = 'Segment_{}'.format(self.segment_num)
-        ch_group = ch_group = self._exdir_data_path["processing"][seg][grp]
-        feat = ch_group['FeatureExtraction']
+        feat = self._exdir_load_group['FeatureExtraction']
         assert set(feat['times']) == set(self.spike_times)
-        return feat['features'].data, feat['masks'].data
+        return feat['data'].data, feat['masks'].data
 
-    # def save_event_waveform(self, spike_times, waveforms, channel_indexes,
-    #                          sampling_rate, channel_group, t_start, t_stop):
-    #     event_wf_group = channel_group.create_group('EventWaveform')
-    #     wf_group = event_wf_group.create_group('waveform_timeseries')
-    #     wf_group.attrs['start_time'] = t_start
-    #     wf_group.attrs['stop_time'] = t_stop
-    #     wf_group.attrs['electrode_idx'] = channel_indexes
-    #     ts_data = wf_group.create_dataset("timestamps", spike_times)
-    #     wf = wf_group.create_dataset("waveforms", waveforms)
-    #     wf.attrs['sample_rate'] = sampling_rate
-
-    # def save_unit_times(self, sptrs, channel_group, t_start, t_stop):
-    #     unit_times_group = channel_group.create_group('UnitTimes')
-    #     unit_times_group.attrs['start_time'] = t_start
-    #     unit_times_group.attrs['stop_time'] = t_stop
-    #     for sptr_id, sptr in enumerate(sptrs):
-    #         times_group = unit_times_group.create_group('{}'.format(sptr_id))
-    #         ts_data = times_group.create_dataset('times', sptr.times)
+    def _find_exdir_channel_group(self, exdir_group):
+        for group in exdir_group.values():
+            exdir_keys = ['electrode_group_id', 'segment_id']
+            phy_par = [self.channel_group, self.segment_num]
+            if all(key in group.attrs for key in exdir_keys):
+                if all(phy == group.attrs[key] for phy, key
+                       in zip(phy_par, exdir_keys)):
+                    return group
+        return None
 
     def load_data(self, channel_group=None, segment_num=None):
         self.channel_group = channel_group or self.channel_group
@@ -328,10 +306,15 @@ class NeoModel(object):
 
     def _load_features_masks(self):
         logger.debug("Loading features.")
+        features = None
         if self.data_path.endswith('.exdir'):
-            self._exdir_data_path = exdir.File(folder=self.data_path)
-            features, masks = self.load_features_masks()
-        else:
+            group = exdir.File(folder=self.data_path)
+            self._exdir_load_group = self._find_exdir_channel_group(
+                group["processing"])
+            if self._exdir_load_group is not None:
+                if 'FeatureExtraction' in self._exdir_load_group:
+                    features, masks = self.load_features_masks()
+        if features is None:
             features, masks = self.calc_features_masks()
         return features, masks
 
@@ -365,7 +348,8 @@ class NeoModel(object):
         if 'cluster_id' in self.sptrs[0].annotations:
             try:
                 out = np.array([i for sptr in self.sptrs for i in
-                               [sptr.annotations['cluster_id']]*len(sptr)])
+                               [sptr.annotations['cluster_id']]*len(sptr)],
+                               'int64')
             except KeyError:
                 logger.debug("cluster_id not found in sptr annotations")
                 raise
@@ -375,8 +359,10 @@ class NeoModel(object):
             logger.debug("cluster_id not found in sptr annotations, " +
                          "giving numbers from 0 to len(sptrs).")
             out = np.array([i for j, sptr in enumerate(self.sptrs)
-                            for i in [j]*len(sptr)])
-        # HACK sometimes out is shape (n_spikes, 1)
+                            for i in [j]*len(sptr)],
+                            'int64')
+        # NOTE sometimes out is shape (n_spikes, 1)
+        # NOTE phy requires int64
         return np.reshape(out, len(out))
 
     def _load_waveforms(self):  # TODO this should be masks for memory saving
