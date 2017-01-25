@@ -62,13 +62,14 @@ class NeoModel(object):
 
     def __init__(self, data_path, channel_group=None, segment_num=None,
                  output_dir=None, output_ext=None, output_name=None,
-                 **kwargs):
+                 overwrite=False, **kwargs):
         self.data_path = data_path
         self.segment_num = segment_num
         self.channel_group = channel_group
         self.output_dir = output_dir
         self.output_ext = output_ext
         self.output_name = output_name
+        self.overwrite = overwrite
         self.__dict__.update(kwargs) # overwrite above stuff with kwargs
         self.output_dir = self.output_dir or op.split(self.data_path)[0]
         fname, ext = op.splitext(op.split(data_path)[1])
