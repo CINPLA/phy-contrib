@@ -21,7 +21,7 @@ try:
     from klusta.traces import PCA as klusta_pca
     from klusta.klustakwik import klustakwik
 except ImportError:  # pragma: no cover
-    logger.warn("Package klusta not installed: the KwikModel will not work.")
+    logger.warn("Package klusta not installed: the NeoModel will not work.")
 
 
 def copy_file_or_folder(fname, fname_copy):
@@ -39,17 +39,16 @@ def delete_file_or_folder(fname):
 
 
 def backup(path):
-    backup = path+'.bak'
+    backup = path + '.bak'
     if op.exists(backup):
         delete_file_or_folder(backup)
     if op.exists(path):
         copy_file_or_folder(path, backup)
 
-# TODO test if saving preserves cluster id
+
 # TODO save group metadata
 # TODO save metadata
 # TODO make klustaexdir script that takes rawdata files and saves to exdir
-# TODO save masks
 # TODO check masks
 # TODO load features and masks if exdir and exists
 # TODO save probe info in exdir
@@ -62,14 +61,14 @@ class NeoModel(object):
 
     def __init__(self, data_path, channel_group=None, segment_num=None,
                  output_dir=None, output_ext=None, output_name=None,
-                 overwrite=False, **kwargs):
+                 mode=False, **kwargs):
         self.data_path = data_path
         self.segment_num = segment_num
         self.channel_group = channel_group
         self.output_dir = output_dir
         self.output_ext = output_ext
         self.output_name = output_name
-        self.overwrite = overwrite
+        self.mode = mode
         self.__dict__.update(kwargs) # overwrite above stuff with kwargs
         self.output_dir = self.output_dir or op.split(self.data_path)[0]
         fname, ext = op.splitext(op.split(data_path)[1])
@@ -82,9 +81,8 @@ class NeoModel(object):
 
         save_path = op.join(self.output_dir, self.output_name +
                             self.output_ext)
-
         try:
-            io = neo.get_io(save_path, mode='w')
+            io = neo.get_io(save_path, mode=self.mode)
         except IOError: # cannot use mode
             try: # without mode
                 io = neo.get_io(save_path)
@@ -110,8 +108,6 @@ class NeoModel(object):
         self.save_path = save_path or op.join(self.output_dir,
                                               self.output_name +
                                               self.output_ext)
-        if not self.overwrite and op.exists(self.save_path):
-            raise FileExistsError('Set the overwrite flag to true')
         # backup(self.save_path)
         logger.debug('Saving output data to {}'.format(self.save_path))
         io = neo.get_io(self.data_path)
@@ -165,7 +161,10 @@ class NeoModel(object):
                                name=self.chx.name,
                                **metadata)
         blk.channel_indexes.append(chx)
-        wf_units = self.sptrs[0].waveforms.units
+        try:
+            wf_units = self.sptrs[0].waveforms.units
+        except AttributeError:
+            wf_units = 1
         clusters = np.unique(spike_clusters)
         if groups is None:
             groups = self.cluster_groups
@@ -189,13 +188,13 @@ class NeoModel(object):
             seg.spiketrains.append(sptr)
 
         # save block to file
-        io = neo.get_io(self.save_path)
+        io = neo.get_io(self.save_path, mode=self.mode)
         io.save(blk)
         try:
             io.close()
         except:
             pass  # TODO except proper error
-        if self.output_ext == '.exdir': # TODO blir cluster identitet bevart av neo.io?
+        if self.output_ext == '.exdir':
             # save features and masks
             group = exdir.File(folder=self.save_path)
             self._exdir_save_group = self._find_exdir_channel_group(
@@ -208,16 +207,17 @@ class NeoModel(object):
 
     def save_features_masks(self, spike_clusters):
         # for saving phy data directly to disc
-        feat = self._exdir_save_group.create_group('FeatureExtraction')
+        # TODO what if the group exists
+        feat = self._exdir_save_group.require_group('FeatureExtraction')
         feat.attrs['electrode_idx'] = self.chx.index
-        feat.create_dataset('data', self.features)
-        feat.create_dataset('masks', self.masks)
-        feat.create_dataset('times', self.spike_times)
+        feat.require_dataset('data', self.features)
+        feat.require_dataset('masks', self.masks)
+        feat.require_dataset('timestamps', self.spike_times)
 
     def load_features_masks(self):
         # for saving phy data directly to disc
         feat = self._exdir_load_group['FeatureExtraction']
-        assert set(feat['times']) == set(self.spike_times)
+        assert set(feat['timestamps']) == set(self.spike_times)
         return feat['data'].data, feat['masks'].data
 
     def _find_exdir_channel_group(self, exdir_group):
@@ -225,7 +225,7 @@ class NeoModel(object):
             exdir_keys = ['electrode_group_id', 'segment_id']
             phy_par = [self.channel_group, self.segment_num]
             if all(key in group.attrs for key in exdir_keys):
-                if all(phy == group.attrs[key] for phy, key
+                if all(par == group.attrs[key] for par, key
                        in zip(phy_par, exdir_keys)):
                     return group
         return None

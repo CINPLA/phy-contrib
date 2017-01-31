@@ -74,10 +74,10 @@ class NeoKlusta(IPlugin):
                       default=False,
                       is_flag=True,
                       )
-        @click.option('--overwrite',
-                      help='Overwrite the data file.',
-                      default=False,
-                      is_flag=True,
+        @click.option('--mode',
+                      help='Mode to neo writer io.',
+                      type=click.STRING,
+                      default='',
                       )
         @click.help_option()
         def main(*args, **kwargs):

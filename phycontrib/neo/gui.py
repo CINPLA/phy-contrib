@@ -375,7 +375,7 @@ class NeoGUIPlugin(IPlugin):
 
     def attach_to_cli(self, cli):
 
-        # Create the `phy cluster-manual file.neo` command.
+        # Create the `phy cluster-manual file.exdir` command.
         @cli.command('neo-gui')  # pragma: no cover
         @click.argument('data-path', type=click.Path(exists=True))
         @click.option('--output-dir',
@@ -400,10 +400,10 @@ class NeoGUIPlugin(IPlugin):
                       type=click.INT,
                       help='Segment number.',
                       )
-        @click.option('--overwrite',
-                      help='Overwrite the data file.',
-                      default=False,
-                      is_flag=True,
+        @click.option('--mode',
+                      help='Mode to neo writer io.',
+                      type=click.STRING,
+                      default='',
                       )
         @click.pass_context
         def gui(ctx, data_path, **kwargs):
