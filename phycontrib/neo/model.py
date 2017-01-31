@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 try:
     from klusta.traces import PCA as klusta_pca
     from klusta.klustakwik import klustakwik
+    from klustakwik2.default_parameters import default_parameters
 except ImportError:  # pragma: no cover
     logger.warn("Package klusta not installed: the NeoModel will not work.")
 
@@ -61,7 +62,7 @@ class NeoModel(object):
 
     def __init__(self, data_path, channel_group=None, segment_num=None,
                  output_dir=None, output_ext=None, output_name=None,
-                 mode=False, **kwargs):
+                 mode=False, kk2_params=None, **kwargs):
         self.data_path = data_path
         self.segment_num = segment_num
         self.channel_group = channel_group
@@ -69,6 +70,7 @@ class NeoModel(object):
         self.output_ext = output_ext
         self.output_name = output_name
         self.mode = mode
+        self.kk2_metadata = kk2_params or default_parameters
         self.__dict__.update(kwargs) # overwrite above stuff with kwargs
         self.output_dir = self.output_dir or op.split(self.data_path)[0]
         fname, ext = op.splitext(op.split(data_path)[1])
@@ -99,10 +101,8 @@ class NeoModel(object):
             if not io.is_writable:
                 logger.warn('Given output extension is not writable, ' +
                             'defaulting to ExdirIO for writing')
-                try:
+                if hasattr(io, 'close'):
                     io.close()
-                except:
-                    pass
                 self.output_ext = '.exdir'
                 save_path = None
         self.save_path = save_path or op.join(self.output_dir,
@@ -164,7 +164,7 @@ class NeoModel(object):
         try:
             wf_units = self.sptrs[0].waveforms.units
         except AttributeError:
-            wf_units = 1
+            wf_units = pq.dimensionless
         clusters = np.unique(spike_clusters)
         if groups is None:
             groups = self.cluster_groups
@@ -179,7 +179,8 @@ class NeoModel(object):
                                   t_stop=self.duration,
                                   t_start=self.start_time,
                                   **{'cluster_id': sc,
-                                     'cluster_group': groups[sc]})
+                                     'cluster_group': groups[sc],
+                                     'kk2_metadata': self.kk2_metadata})
             sptr.channel_index = chx
             unt = neo.Unit(name='Unit #{}'.format(sc),
                            **{'cluster_id': sc, 'cluster_group': groups[sc]})
@@ -189,11 +190,9 @@ class NeoModel(object):
 
         # save block to file
         io = neo.get_io(self.save_path, mode=self.mode)
-        io.save(blk)
-        try:
+        io.write_block(blk)
+        if hasattr(io, 'close'):
             io.close()
-        except:
-            pass  # TODO except proper error
         if self.output_ext == '.exdir':
             # save features and masks
             group = exdir.File(folder=self.save_path)
@@ -299,10 +298,10 @@ class NeoModel(object):
                                                   channel_ids)
         assert features.shape == masks.shape
         spike_clusters, metadata = klustakwik(features=features,
-                                              masks=masks)
+                                              masks=masks, **self.kk2_metadata)
         self.cluster_groups = {cl: 'Unsorted' for cl in
                                np.unique(spike_clusters)}
-        self.kk2_metadata = metadata
+        self.kk2_metadata.update(metadata)
         return spike_clusters
 
     def _load_features_masks(self):
