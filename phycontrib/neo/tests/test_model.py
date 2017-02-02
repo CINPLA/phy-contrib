@@ -63,3 +63,4 @@ def test_load_save():
     assert np.array_equal(m2.features, m.features)
     assert np.array_equal(m2.amplitudes, m.amplitudes)
     assert np.array_equal(m2.spike_clusters, m.spike_clusters)
+    # TODO test number of calls

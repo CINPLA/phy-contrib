@@ -197,10 +197,10 @@ class NeoModel(object):
             # save features and masks
             group = exdir.File(folder=self.save_path)
             self._exdir_save_group = self._find_exdir_channel_group(
-                group["processing"])
+                group["processing"]['electrophysiology']) # TODO not use elphys name
             if self._exdir_save_group is None:
                 raise IOError('Can not find a dirctory corresponding to ' +
-                              ' and channel_group {}'.format(self.channel_group))
+                              'channel_group {}'.format(self.channel_group))
             self.save_features_masks(spike_clusters)
 
     def save_features_masks(self, spike_clusters):
@@ -307,7 +307,7 @@ class NeoModel(object):
         if self.data_path.endswith('.exdir'):
             group = exdir.File(folder=self.data_path)
             self._exdir_load_group = self._find_exdir_channel_group(
-                group["processing"])
+                group["processing"]['electrophysiology'])
             if self._exdir_load_group is not None:
                 if 'FeatureExtraction' in self._exdir_load_group:
                     features, masks = self.load_features_masks()
