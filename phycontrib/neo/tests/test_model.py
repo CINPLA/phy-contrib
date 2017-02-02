@@ -38,6 +38,7 @@ def test_load_save():
                           t_stop=t_stop)
     blk = neo.Block()
     seg = neo.Segment()
+    seg.duration = t_stop
     blk.segments.append(seg)
     chx = neo.ChannelIndex(index=range(n_channels))
     blk.channel_indexes.append(chx)
@@ -50,7 +51,7 @@ def test_load_save():
     if os.path.exists(fname):
         shutil.rmtree(fname)
     io = neo.ExdirIO(fname)
-    io.save(blk)
+    io.write_block(blk)
     wfswap = wf.swapaxes(1, 2)
     m = NeoModel(fname, overwrite=True)
     assert np.array_equal(m.spike_times, ts)

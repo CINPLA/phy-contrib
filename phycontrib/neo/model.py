@@ -200,7 +200,6 @@ class NeoModel(object):
                 group["processing"])
             if self._exdir_save_group is None:
                 raise IOError('Can not find a dirctory corresponding to ' +
-                              'given segment_num {}'.format(self.segment_num) +
                               ' and channel_group {}'.format(self.channel_group))
             self.save_features_masks(spike_clusters)
 
@@ -220,12 +219,10 @@ class NeoModel(object):
         return feat['data'].data, feat['masks'].data
 
     def _find_exdir_channel_group(self, exdir_group):
+        # TODO assumes that electrode_group_id is in attributes of an electrode group
         for group in exdir_group.values():
-            exdir_keys = ['electrode_group_id', 'segment_id']
-            phy_par = [self.channel_group, self.segment_num]
-            if all(key in group.attrs for key in exdir_keys):
-                if all(par == group.attrs[key] for par, key
-                       in zip(phy_par, exdir_keys)):
+            if 'electrode_group_id' in group.attrs:
+                if group.attrs['electrode_group_id'] == self.channel_group:
                     return group
         return None
 
