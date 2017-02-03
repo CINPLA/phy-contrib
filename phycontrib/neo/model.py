@@ -243,7 +243,6 @@ class NeoModel(object):
         self.chx = self._chxs[self.channel_group]
         self.channel_ids = self.chx.index
         self.n_chans = len(self.chx.index)
-
         self.sptrs = [st for st in self.seg.spiketrains
                       if st.channel_index == self._chxs[self.channel_group]]
         self.sample_rate = self.sptrs[0].sampling_rate.rescale('Hz').magnitude

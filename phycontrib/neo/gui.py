@@ -30,9 +30,7 @@ from phy.io.context import Context, _cache_methods
 from phy.stats import correlograms
 from phy.utils import Bunch, IPlugin, EventEmitter
 from phy.utils._color import ColorSelector
-from phy.utils._misc import _read_python
 from phy.utils.cli import _run_cmd, _add_log_file
-from phy.utils.tempdir import TemporaryDirectory
 
 from .model import NeoModel
 from ..utils import attach_plugins
@@ -75,6 +73,7 @@ class AmplitudeView(ScatterView):
 def _get_distance_max(pos):
     return np.sqrt(np.sum(pos.max(axis=0) - pos.min(axis=0)) ** 2)
 
+
 class NeoController(EventEmitter):
     gui_name = 'NeoGUI'
 
@@ -113,12 +112,12 @@ class NeoController(EventEmitter):
     def _set_cache(self):
         memcached = ()
         cached = ()
-        # memcached = ('get_best_channels',
-        #              'get_probe_depth',
-        #              '_get_mean_waveforms',
-        #              )
-        # cached = ('_get_waveforms',
-        #           )
+        memcached = ('get_best_channels',
+                     'get_probe_depth',
+                     '_get_mean_waveforms',
+                     )
+        cached = ('_get_waveforms',
+                  )
         _cache_methods(self, memcached, cached)
 
     def _set_supervisor(self):
@@ -146,7 +145,9 @@ class NeoController(EventEmitter):
                 cluster_ids = supervisor.selected  # TODO can you have multiselect here?
                 spike_ids = self.selector.select_spikes(cluster_ids)
                 logger.info("Running KlustaKwik on %d spikes.", len(spike_ids))
-                channel_ids = self.get_best_channels(cluster_ids)  # TODO sending several cluster_ids to get best channels ?
+                print('***********************')
+                print('Fix this wierd fix, cant send in list (cluster_ids)')
+                channel_ids = self.get_best_channels(cluster_ids[0])  # TODO sending several cluster_ids to get best channels ?
                 spike_clusters = self.model.cluster(spike_ids, channel_ids)
                 self.supervisor.split(spike_ids, spike_clusters)
 
@@ -179,7 +180,7 @@ class NeoController(EventEmitter):
         channel_id = np.argmax(amps)
         return channel_id
 
-    def get_best_channels(self, cluster_id):  # TODO
+    def get_best_channels(self, cluster_ids):  # TODO
         # mm = self._get_mean_waveforms(cluster_id)
         # channel_ids = np.argsort(mm)[::-1]
         # channel_ids = channel_ids[mm[channel_ids] > .1]
