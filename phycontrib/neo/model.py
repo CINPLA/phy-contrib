@@ -25,14 +25,14 @@ except ImportError:  # pragma: no cover
     logger.warn("Package klusta not installed: the NeoModel will not work.")
 
 
-def copy_file_or_folder(fname, fname_copy):
+def copy_file_or_directory(fname, fname_copy):
     if op.isfile(fname):
         shutil.copy(fname, fname_copy)
     if op.isdir(fname):
         shutil.copytree(fname, fname_copy)
 
 
-def delete_file_or_folder(fname):
+def delete_file_or_directory(fname):
     if op.isfile(fname):
         os.remove(fname)
     if op.isdir(fname):
@@ -42,9 +42,9 @@ def delete_file_or_folder(fname):
 def backup(path):
     backup = path + '.bak'
     if op.exists(backup):
-        delete_file_or_folder(backup)
+        delete_file_or_directory(backup)
     if op.exists(path):
-        copy_file_or_folder(path, backup)
+        copy_file_or_directory(path, backup)
 
 
 # TODO save group metadata
@@ -152,7 +152,7 @@ class NeoModel(object):
         blk = neo.Block()
         seg = neo.Segment(name='Segment_{}'.format(self.segment_num),
                           index=self.segment_num)
-        seg.duration = self.duration
+        # seg.duration = self.duration
         blk.segments.append(seg)
         metadata = self.chx.annotations
         if labels:
@@ -195,7 +195,7 @@ class NeoModel(object):
             io.close()
         if self.output_ext == '.exdir':
             # save features and masks
-            group = exdir.File(folder=self.save_path)
+            group = exdir.File(directory=self.save_path)
             self._exdir_save_group = self._find_exdir_channel_group(
                 group["processing"]['electrophysiology']) # TODO not use elphys name
             if self._exdir_save_group is None:
@@ -233,7 +233,7 @@ class NeoModel(object):
         if self.segment_num is None:
             self.segment_num = 0  # TODO find the right seg num
         self.seg = blk.segments[self.segment_num]
-        self.duration = self.seg.duration
+        self.duration = self.seg.t_stop - self.seg.t_start
         self.start_time = self.seg.t_start
         if self.channel_group is None:
             self.channel_group = self.channel_groups[0]
@@ -304,7 +304,7 @@ class NeoModel(object):
         logger.debug("Loading features.")
         features = None
         if self.data_path.endswith('.exdir'):
-            group = exdir.File(folder=self.data_path)
+            group = exdir.File(directory=self.data_path)
             self._exdir_load_group = self._find_exdir_channel_group(
                 group["processing"]['electrophysiology'])
             if self._exdir_load_group is not None:
