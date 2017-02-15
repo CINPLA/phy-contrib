@@ -205,7 +205,6 @@ class NeoModel(object):
 
     def save_features_masks(self, spike_clusters):
         # for saving phy data directly to disc
-        # TODO what if the group exists
         feat = self._exdir_save_group.require_group('FeatureExtraction')
         feat.attrs['electrode_idx'] = self.chx.index
         feat.require_dataset('data', self.features)
