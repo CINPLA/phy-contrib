@@ -113,6 +113,7 @@ class NeoModel(object):
         logger.debug('Saving output data to {}'.format(self.save_path))
         io = neo.get_io(self.data_path)
         assert io.is_readable
+        logger.info('Loading block')
         self.data_block = io.read_block()  # TODO params to select what to read
         try:
             io.close()
@@ -130,7 +131,7 @@ class NeoModel(object):
             self._chxs = {int(chx.annotations['group_id']): chx
                           for chx in self.data_block.channel_indexes}
         self.channel_groups = list(self._chxs.keys())
-
+        logger.info('Loading data')
         self.load_data()
 
     def describe(self):
