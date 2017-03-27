@@ -55,6 +55,7 @@ def backup(path):
 # TODO save probe info in exdir
 # TODO test if sorting spike times messes up anything
 # TODO more carefully only save what is saved
+# TODO recluster names group unsorted with small u
 
 
 class NeoModel(object):
@@ -147,7 +148,7 @@ class NeoModel(object):
         if spike_clusters is None:
             spike_clusters = self.spike_clusters
         assert spike_clusters.shape == self.spike_clusters.shape
-        assert spike_clusters.dtype == self.spike_clusters.dtype
+        # assert spike_clusters.dtype == self.spike_clusters.dtype # TODO check if this is necessary
         self.spike_clusters = spike_clusters
         blk = neo.Block()
         seg = neo.Segment(name='Segment_{}'.format(self.segment_num),
