@@ -181,11 +181,11 @@ class NeoModel(object):
                                   t_stop=self.duration,
                                   t_start=self.start_time,
                                   **{'cluster_id': sc,
-                                     'cluster_group': groups[sc],
+                                     'cluster_group': groups[sc].lower(),
                                      'kk2_metadata': self.kk2_metadata})
             sptr.channel_index = chx
             unt = neo.Unit(name='Unit #{}'.format(sc),
-                           **{'cluster_id': sc, 'cluster_group': groups[sc]})
+                           **{'cluster_id': sc, 'cluster_group': groups[sc].lower()})
             unt.spiketrains.append(sptr)
             chx.units.append(unt)
             seg.spiketrains.append(sptr)
@@ -217,7 +217,8 @@ class NeoModel(object):
         # for saving phy data directly to disc
         feat = self._exdir_load_group['FeatureExtraction']
         assert set(feat['timestamps']) == set(self.spike_times)
-        return feat['data'].data, feat['masks'].data
+        # HACK TODO memory mapped data cannot be overridden therefore convert to array issue #29 in exdir
+        return np.array(feat['data'].data), np.array(feat['masks'].data)
 
     def _find_exdir_channel_group(self, exdir_group):
         # TODO assumes that electrode_group_id is in attributes of an electrode group
@@ -296,7 +297,7 @@ class NeoModel(object):
         assert features.shape == masks.shape
         spike_clusters, metadata = klustakwik(features=features,
                                               masks=masks, **self.kk2_metadata)
-        self.cluster_groups = {cl: 'Unsorted' for cl in
+        self.cluster_groups = {cl: 'unsorted' for cl in
                                np.unique(spike_clusters)}
         self.kk2_metadata.update(metadata)
         return spike_clusters
@@ -329,8 +330,8 @@ class NeoModel(object):
                    sptr.annotations['cluster_group'] for sptr in self.sptrs}
         else:
             logger.warn('No cluster_group found in spike trains, naming all' +
-                        ' "Unsorted"')
-            out = {i: 'Unsorted' for i in np.unique(self.spike_clusters)}
+                        ' "unsorted"')
+            out = {i: 'unsorted' for i in np.unique(self.spike_clusters)}
         return out
 
     def _load_spike_times(self):
