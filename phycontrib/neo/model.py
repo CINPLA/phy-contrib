@@ -64,6 +64,7 @@ class NeoModel(object):
     def __init__(self, data_path, channel_group=None, segment_num=None,
                  output_dir=None, output_ext=None, output_name=None,
                  mode=False, kk2_params=None, **kwargs):
+        self.feature_type = 'pca'
         self.data_path = data_path
         self.segment_num = segment_num
         self.channel_group = channel_group
@@ -145,6 +146,50 @@ class NeoModel(object):
         _print('Number of spikes', self.n_spikes)
         _print('Available channel groups', self.channel_groups)
 
+    def load_data(self, channel_group=None, segment_num=None):
+        self.channel_group = channel_group or self.channel_group
+        self.segment_num = segment_num or self.segment_num
+        blk = self.data_block
+        if self.segment_num is None:
+            self.segment_num = 0  # TODO find the right seg num
+        self.seg = blk.segments[self.segment_num]
+        self.duration = self.seg.t_stop - self.seg.t_start
+        self.start_time = self.seg.t_start
+        if self.channel_group is None:
+            self.channel_group = self.channel_groups[0]
+        if self.channel_group not in self.channel_groups:
+            raise ValueError('channel group not available,' +
+                             ' see available channel groups in neo-describe')
+        self.chx = self._chxs[self.channel_group]
+        self.channel_ids = self.chx.index
+        self.n_chans = len(self.chx.index)
+        self.sptrs = [st for st in self.seg.spiketrains
+                      if st.channel_index == self._chxs[self.channel_group]]
+        self.sample_rate = self.sptrs[0].sampling_rate.rescale('Hz').magnitude
+
+        self.spike_times = self._load_spike_times()
+        sorted_idxs = np.argsort(self.spike_times)
+        self.spike_times = self.spike_times[sorted_idxs]
+        ns, = self.n_spikes, = self.spike_times.shape
+
+        self.spike_clusters = self._load_spike_clusters()[sorted_idxs]
+        assert self.spike_clusters.shape == (ns,)
+
+        self.cluster_groups = self._load_cluster_groups()
+
+        self.waveforms = self._load_waveforms()[sorted_idxs, :, :]
+        assert self.waveforms.shape[::2] == (ns, self.n_chans), '{} != {}'.format(self.waveforms.shape[::2], (ns, self.n_chans))
+
+        self.features, self.masks = self._load_features_masks() # loads from waveforms which is already sorted
+
+        self.amplitudes = self._load_amplitudes()
+        assert self.amplitudes.shape == (ns, self.n_chans)
+
+        # TODO load positino from params
+        ch_pos = np.zeros((self.n_chans, 2))
+        ch_pos[:, 1] = np.arange(self.n_chans)
+        self.channel_positions = ch_pos
+    
     def save(self, spike_clusters=None, groups=None, *labels):
         if spike_clusters is None:
             spike_clusters = self.spike_clusters
@@ -209,13 +254,18 @@ class NeoModel(object):
         # for saving phy data directly to disc
         feat = self._exdir_save_group.require_group('FeatureExtraction')
         feat.attrs['electrode_idx'] = self.chx.index
-        feat.require_dataset('data', self.features)
+        dset = feat.require_dataset('data', self.features)
+        dset.attrs['feature_type'] = self.feature_type
+        dset.attrs['num_samples'] = self.features.shape[0]
+        dset.attrs['num_channels'] = self.features.shape[1]
+        dset.attrs['num_features'] = self.features.shape[2]
         feat.require_dataset('masks', self.masks)
         feat.require_dataset('timestamps', self.spike_times)
 
     def load_features_masks(self):
         # for saving phy data directly to disc
         feat = self._exdir_load_group['FeatureExtraction']
+        # TODO check if right feature_type
         assert set(feat['timestamps']) == set(self.spike_times)
         # HACK TODO memory mapped data cannot be overridden therefore convert to array issue #29 in exdir
         return np.array(feat['data'].data), np.array(feat['masks'].data)
@@ -227,57 +277,13 @@ class NeoModel(object):
                 if group.attrs['electrode_group_id'] == self.channel_group:
                     return group
         return None
-
-    def load_data(self, channel_group=None, segment_num=None):
-        self.channel_group = channel_group or self.channel_group
-        self.segment_num = segment_num or self.segment_num
-        blk = self.data_block
-        if self.segment_num is None:
-            self.segment_num = 0  # TODO find the right seg num
-        self.seg = blk.segments[self.segment_num]
-        self.duration = self.seg.t_stop - self.seg.t_start
-        self.start_time = self.seg.t_start
-        if self.channel_group is None:
-            self.channel_group = self.channel_groups[0]
-        if self.channel_group not in self.channel_groups:
-            raise ValueError('channel group not available,' +
-                             ' see available channel groups in neo-describe')
-        self.chx = self._chxs[self.channel_group]
-        self.channel_ids = self.chx.index
-        self.n_chans = len(self.chx.index)
-        self.sptrs = [st for st in self.seg.spiketrains
-                      if st.channel_index == self._chxs[self.channel_group]]
-        self.sample_rate = self.sptrs[0].sampling_rate.rescale('Hz').magnitude
-
-        self.spike_times = self._load_spike_times()
-        sorted_idxs = np.argsort(self.spike_times)
-        self.spike_times = self.spike_times[sorted_idxs]
-        ns, = self.n_spikes, = self.spike_times.shape
-
-        self.spike_clusters = self._load_spike_clusters()[sorted_idxs]
-        assert self.spike_clusters.shape == (ns,)
-
-        self.cluster_groups = self._load_cluster_groups()
-
-        self.waveforms = self._load_waveforms()[sorted_idxs, :, :]
-        assert self.waveforms.shape[::2] == (ns, self.n_chans), '{} != {}'.format(self.waveforms.shape[::2], (ns, self.n_chans))
-
-        self.features, self.masks = self._load_features_masks() # loads from waveforms which is already sorted
-
-        self.amplitudes = self._load_amplitudes()
-        assert self.amplitudes.shape == (ns, self.n_chans)
-
-        # TODO load positino from params
-        ch_pos = np.zeros((self.n_chans, 2))
-        ch_pos[:, 1] = np.arange(self.n_chans)
-        self.channel_positions = ch_pos
-
+    
     def get_metadata(self, name):
         return None
 
     def get_waveforms(self, spike_ids, channel_ids):
         wf = self.waveforms
-        return wf[spike_ids, :, :][:, :, channel_ids]  # TODO wierd fix
+        return wf[spike_ids, :, :][:, :, channel_ids]
 
     def get_features_masks(self, spike_ids, channel_ids):
         # we select the primary principal component
@@ -318,9 +324,16 @@ class NeoModel(object):
 
     def calc_features_masks(self):
         masks = np.ones((self.n_spikes, self.n_chans))
-        pca = klusta_pca(self.n_pcs)
-        pca.fit(self.waveforms, masks)
-        features = pca.transform(self.waveforms)
+        if self.feature_type == 'pca':
+            pca = klusta_pca(self.n_pcs)
+            pca.fit(self.waveforms, masks)
+            features = pca.transform(self.waveforms)
+        elif self.feature_type == 'amplitude':
+            left_sweep = 0.2 * pq.ms  # TODO select left sweep
+            # TODO select left_sweep
+            m = int(self.sample_rate * left_sweep.rescale('s').magnitude)
+            features = np.zeros((self.waveforms.shape[0], self.waveforms.shape[2], 3))
+            features[:,:,0] = self.waveforms[:, m, :].reshape(self.waveforms.shape[0], self.waveforms.shape[2])
         return features, masks
 
     def _load_cluster_groups(self):
@@ -357,8 +370,7 @@ class NeoModel(object):
             logger.debug("cluster_id not found in sptr annotations, " +
                          "giving numbers from 0 to len(sptrs).")
             out = np.array([i for j, sptr in enumerate(self.sptrs)
-                            for i in [j]*len(sptr)],
-                            'int64')
+                            for i in [j]*len(sptr)], 'int64')
         # NOTE sometimes out is shape (n_spikes, 1)
         # NOTE phy requires int64
         return np.reshape(out, len(out))

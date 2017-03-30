@@ -78,7 +78,7 @@ class NeoController(EventEmitter):
     gui_name = 'NeoGUI'
 
     n_spikes_waveforms = 100
-    batch_size_waveforms = 10
+    batch_size_waveforms = 100
 
     n_spikes_features = 10000
     n_spikes_amplitudes = 10000
