@@ -20,6 +20,7 @@ from phy.cluster.views import (WaveformView,
                                TraceView,
                                CorrelogramView,
                                ScatterView,
+                               ProbeView,
                                select_traces,
                                )
 from phy.cluster.views.trace import _iter_spike_waveforms
@@ -81,7 +82,7 @@ class TemplateController(EventEmitter):
         super(TemplateController, self).__init__()
         if model is None:
             assert dat_path
-            dat_path = op.realpath(dat_path)
+            dat_path = op.abspath(dat_path)
             self.model = TemplateModel(dat_path, **kwargs)
         else:
             self.model = model
@@ -400,17 +401,15 @@ class TemplateController(EventEmitter):
         """Get traces and spike waveforms."""
         k = self.model.n_samples_templates
         m = self.model
-        c = m.channel_vertical_order
 
         traces_interval = select_traces(m.traces, interval,
                                         sample_rate=m.sample_rate)
         # Reorder vertically.
-        traces_interval = traces_interval[:, c]
         out = Bunch(data=traces_interval)
         out.waveforms = []
 
         def gbc(cluster_id):
-            return c[self.get_best_channels(cluster_id)]
+            return self.get_best_channels(cluster_id)
 
         for b in _iter_spike_waveforms(interval=interval,
                                        traces_interval=traces_interval,
@@ -450,7 +449,7 @@ class TemplateController(EventEmitter):
                       n_channels=m.n_channels,
                       sample_rate=m.sample_rate,
                       duration=m.duration,
-                      channel_labels=self.model.channel_vertical_order,
+                      channel_vertical_order=m.channel_vertical_order,
                       )
         self._add_view(gui, v)
 
@@ -473,6 +472,13 @@ class TemplateController(EventEmitter):
             """Toggle between showing all spikes or selected spikes."""
             self._show_all_spikes = not self._show_all_spikes
             v.set_interval(force_update=True)
+
+        @gui.connect_
+        def on_spike_click(channel_id=None, spike_id=None, cluster_id=None):
+            # Select the corresponding cluster.
+            self.supervisor.select([cluster_id])
+            # Update the trace view.
+            v.on_select([cluster_id], force_update=True)
 
         return v
 
@@ -517,6 +523,16 @@ class TemplateController(EventEmitter):
                           )
         return self._add_view(gui, v)
 
+    # Probe view
+    # -------------------------------------------------------------------------
+
+    def add_probe_view(self, gui):
+        v = ProbeView(positions=self.model.channel_positions,
+                      best_channels=self.get_best_channels,
+                      )
+        v.attach(gui)
+        return v
+
     # GUI
     # -------------------------------------------------------------------------
 
@@ -538,6 +554,7 @@ class TemplateController(EventEmitter):
         self.add_correlogram_view(gui)
         if self.model.amplitudes is not None:
             self.add_amplitude_view(gui)
+        self.add_probe_view(gui)
 
         # Save the memcache when closing the GUI.
         @gui.connect_
