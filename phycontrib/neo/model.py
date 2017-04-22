@@ -75,7 +75,7 @@ class NeoModel(object):
         self.kk2_metadata = kk2_params or default_parameters
         self.__dict__.update(kwargs) # overwrite above stuff with kwargs
         self.output_dir = self.output_dir or op.split(self.data_path)[0]
-        fname, ext = op.splitext(op.split(data_path)[1])
+        fname, ext = op.splitext(op.split(self.data_path)[1])
         self.output_name = self.output_name or fname
         self.output_ext = self.output_ext or ext
         if self.output_ext[0] != '.':
