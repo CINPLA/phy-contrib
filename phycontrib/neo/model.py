@@ -65,7 +65,7 @@ class NeoModel(object):
                  output_dir=None, output_ext=None, output_name=None,
                  mode=False, kk2_params=None, **kwargs):
         self.feature_type = 'pca'
-        self.data_path = data_path
+        self.data_path = op.abspath(data_path)
         self.segment_num = segment_num
         self.channel_group = channel_group
         self.output_dir = output_dir
@@ -189,7 +189,7 @@ class NeoModel(object):
         ch_pos = np.zeros((self.n_chans, 2))
         ch_pos[:, 1] = np.arange(self.n_chans)
         self.channel_positions = ch_pos
-    
+
     def save(self, spike_clusters=None, groups=None, *labels):
         if spike_clusters is None:
             spike_clusters = self.spike_clusters
@@ -277,7 +277,7 @@ class NeoModel(object):
                 if group.attrs['electrode_group_id'] == self.channel_group:
                     return group
         return None
-    
+
     def get_metadata(self, name):
         return None
 
