@@ -86,15 +86,12 @@ class NeoController(EventEmitter):
 
     def __init__(self, data_path, config_dir=None, **kwargs):
         super(NeoController, self).__init__()
-        # HACK to get the gui to load the right n_spikes etc
         self.model = NeoModel(data_path, **kwargs)
-        buggy_cache = op.join(self.model.output_dir, '.phy')
-        if op.exists(buggy_cache):
-            logger.info('Deleting ".phy"')
-            shutil.rmtree(buggy_cache)
-
         self.distance_max = _get_distance_max(self.model.channel_positions)
         self.cache_dir = op.join(self.model.output_dir, '.phy')
+        cg = kwargs.get('channel_group', None)
+        cg = cg or 0
+        self.cache_dir = op.join(self.cache_dir, 'channel_group_' + str(cg))
         self.context = Context(self.cache_dir)
         self.config_dir = config_dir
         self._set_cache()
@@ -111,10 +108,13 @@ class NeoController(EventEmitter):
     # -------------------------------------------------------------------------
 
     def _set_cache(self):
-        memcached = ()
-        cached = ()
-        memcached = ()
-        cached = ()
+        memcached = ('get_best_channels',
+                     'get_probe_depth',
+                     '_get_mean_waveforms',
+                     )
+        cached = ('_get_waveforms',
+                  '_get_features',
+                  )
         _cache_methods(self, memcached, cached)
 
     def _set_supervisor(self):
