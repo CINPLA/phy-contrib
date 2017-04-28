@@ -11,7 +11,7 @@ import logging
 from operator import itemgetter
 import os
 import os.path as op
-
+import shutil
 import click
 import numpy as np
 
@@ -88,9 +88,10 @@ class NeoController(EventEmitter):
         super(NeoController, self).__init__()
         # HACK to get the gui to load the right n_spikes etc
         self.model = NeoModel(data_path, **kwargs)
-        stupid_file = op.join(self.model.output_dir, '.phy', 'spikes_per_cluster.pkl')
-        if op.exists(stupid_file):
-            os.remove(stupid_file)
+        buggy_cache = op.join(self.model.output_dir, '.phy')
+        if op.exists(buggy_cache):
+            logger.info('Deleting ".phy"')
+            shutil.rmtree(buggy_cache)
 
         self.distance_max = _get_distance_max(self.model.channel_positions)
         self.cache_dir = op.join(self.model.output_dir, '.phy')
