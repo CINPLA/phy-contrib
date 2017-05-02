@@ -289,7 +289,12 @@ class NeoModel(object):
         # for saving phy data directly to disc
         feat = self._exdir_load_group['FeatureExtraction']
         # TODO check if right feature_type
-        assert set(feat['timestamps']) == set(self.spike_times)
+        if not np.array_equal(feat['timestamps'].data, self.spike_times):
+            raise ValueError('Extracted features have different timestamps' +
+                             'than the spike times: \n{}\n{}'.format(
+                feat['timestamps'].data,
+                self.spike_times)
+            )
         # HACK TODO memory mapped data cannot be overridden therefore convert to array issue #29 in exdir
         return np.array(feat['data'].data), np.array(feat['masks'].data)
 
