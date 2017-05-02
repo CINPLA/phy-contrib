@@ -108,7 +108,7 @@ class NeoModel(object):
                 elif HAVE_NIX:
                     self.output_ext = '.h5'
                 else:
-                    raise IOError("Neighter exdir or nix is found, don't know" +
+                    raise IOError("Neither exdir or nix is found, don't know" +
                                   " how to save data, please give a NEO " +
                                   "writable extention.")
                 save_path = None
@@ -126,7 +126,7 @@ class NeoModel(object):
                 elif HAVE_NIX:
                     self.output_ext = '.h5'
                 else:
-                    raise IOError("Neighter exdir or nix is found, don't know" +
+                    raise IOError("Neither exdir or nix is found, don't know" +
                                   " how to save data, please give a NEO " +
                                   "writable extention.")
                 save_path = None
