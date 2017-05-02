@@ -8,7 +8,16 @@ import quantities as pq
 import numpy as np
 import copy
 import shutil
-import exdir
+try:
+    import exdir
+    HAVE_EXDIR = True
+except Exception:
+    HAVE_EXDIR = False
+try:
+    import nix
+    HAVE_NIX = True
+except Exception:
+    HAVE_NIX = False
 
 from phy.io.array import (_concatenate_virtual_arrays,
                           _index_of,
@@ -93,8 +102,15 @@ class NeoModel(object):
             except FileNotFoundError: # file must be made, assuming this io cannot write
                 logger.warn('Given output extension requires an existing ' +
                             'file, thus assuming it is not writable and ' +
-                            'defaulting to ExdirIO for writing')
-                self.output_ext = '.exdir'
+                            'defaulting to ExdirIO or NIXIO for writing')
+                if HAVE_EXDIR:
+                    self.output_ext = '.exdir'
+                elif HAVE_NIX:
+                    self.output_ext = '.h5'
+                else:
+                    raise IOError("Neighter exdir or nix is found, don't know" +
+                                  " how to save data, please give a NEO " +
+                                  "writable extention.")
                 save_path = None
                 io = False
             except:
@@ -102,10 +118,17 @@ class NeoModel(object):
         if io:
             if not io.is_writable:
                 logger.warn('Given output extension is not writable, ' +
-                            'defaulting to ExdirIO for writing')
+                            'defaulting to ExdirIO or NIXIO for writing')
                 if hasattr(io, 'close'):
                     io.close()
-                self.output_ext = '.exdir'
+                if HAVE_EXDIR:
+                    self.output_ext = '.exdir'
+                elif HAVE_NIX:
+                    self.output_ext = '.h5'
+                else:
+                    raise IOError("Neighter exdir or nix is found, don't know" +
+                                  " how to save data, please give a NEO " +
+                                  "writable extention.")
                 save_path = None
         self.save_path = save_path or op.join(self.output_dir,
                                               self.output_name +
