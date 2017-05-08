@@ -137,26 +137,8 @@ class NeoModel(object):
         logger.debug('Saving output data to {}'.format(self.save_path))
         io = neo.get_io(self.data_path)
         assert io.is_readable
-        logger.info('Loading block')
-        self.data_block = io.read_block()  # TODO params to select what to read
-        try:
-            io.close()
-        except:
-            pass
 
-        if not all(['group_id' in chx.annotations
-                    for chx in self.data_block.channel_indexes]):
-            logger.warn('"group_id" is not in channel_index.annotations ' +
-                        'counts channel_group as appended to ' +
-                        'Block.channel_indexes')
-            self._chxs = {i: chx for i, chx in
-                          enumerate(self.data_block.channel_indexes)}
-        else:
-            self._chxs = {int(chx.annotations['group_id']): chx
-                          for chx in self.data_block.channel_indexes}
-        self.channel_groups = list(self._chxs.keys())
-        logger.info('Loading data')
-        self.load_data()
+        self.load_data(io)
 
     def describe(self):
         def _print(name, value):
@@ -169,25 +151,57 @@ class NeoModel(object):
         _print('Number of spikes', self.n_spikes)
         _print('Available channel groups', self.channel_groups)
 
-    def load_data(self, channel_group=None, segment_num=None):
+    def load_data(self, io, channel_group=None, segment_num=None):
         self.channel_group = channel_group or self.channel_group
         self.segment_num = segment_num or self.segment_num
-        blk = self.data_block
         if self.segment_num is None:
             self.segment_num = 0  # TODO find the right seg num
-        self.seg = blk.segments[self.segment_num]
+        if neo.Block in io.readable_objects:
+            logger.info('Loading block')
+            blk = io.read_block()  # TODO params to select what to read
+            try:
+                io.close()
+            except:
+                pass
+
+            if not all(['group_id' in chx.annotations
+                        for chx in blk.channel_indexes]):
+                logger.warn('"group_id" is not in channel_index.annotations ' +
+                            'counts channel_group as appended to ' +
+                            'Block.channel_indexes')
+                self._chxs = {i: chx for i, chx in
+                              enumerate(blk.channel_indexes)}
+            else:
+                self._chxs = {int(chx.annotations['group_id']): chx
+                              for chx in blk.channel_indexes}
+            self.channel_groups = list(self._chxs.keys())
+
+            self.seg = blk.segments[self.segment_num]
+            if self.channel_group is None:
+                self.channel_group = self.channel_groups[0]
+            if self.channel_group not in self.channel_groups:
+                raise ValueError('channel group not available,' +
+                                 ' see available channel groups in neo-describe')
+            self.chx = self._chxs[self.channel_group]
+            self.sptrs = [st for unit in self.chx.units
+                          for st in unit.spiketrains
+                          if st in self.seg.spiketrains]
+        elif neo.Segment in io.readable_objects:
+            logger.info('Loading segment')
+            self.seg = io.read_segment()
+            self.segment_num = 0
+            self.sptrs = self.seg.spiketrains
+            self.chx = neo.ChannelIndex(
+                index=[range(self.sptrs[0].waveforms.shape[1])],
+                **{'group_id': 0}
+            )
+
         self.duration = self.seg.t_stop - self.seg.t_start
         self.start_time = self.seg.t_start
-        if self.channel_group is None:
-            self.channel_group = self.channel_groups[0]
-        if self.channel_group not in self.channel_groups:
-            raise ValueError('channel group not available,' +
-                             ' see available channel groups in neo-describe')
-        self.chx = self._chxs[self.channel_group]
+
         self.channel_ids = self.chx.index
         self.n_chans = len(self.chx.index)
-        self.sptrs = [st for st in self.seg.spiketrains
-                      if st.channel_index == self._chxs[self.channel_group]]
+
         self.sample_rate = self.sptrs[0].sampling_rate.rescale('Hz').magnitude
 
         self.spike_times = self._load_spike_times()
@@ -236,9 +250,7 @@ class NeoModel(object):
         except AttributeError:
             wf_units = pq.dimensionless
         clusters = np.unique(spike_clusters)
-        if groups is None:
-            groups = self.cluster_groups
-        self.cluster_groups = groups
+        self.cluster_groups = groups or self.cluster_groups
         for sc in clusters:
             mask = self.spike_clusters == sc
             waveforms = np.swapaxes(self.waveforms[mask], 1, 2) * wf_units
