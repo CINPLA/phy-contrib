@@ -179,9 +179,10 @@ class NeoModel(object):
                 raise ValueError('channel group not available,' +
                                  ' see available channel groups in neo-describe')
             self.chx = self._chxs[self.channel_group]
+            st_ids = [st.annotations['cluster_id'] for st in self.seg.spiketrains]
             self.sptrs = [st for unit in self.chx.units
                           for st in unit.spiketrains
-                          if st in self.seg.spiketrains]
+                          if st.annotations['cluster_id'] in st_ids]
         elif neo.Segment in io.readable_objects:
             logger.info('Loading segment')
             self.seg = io.read_segment()
