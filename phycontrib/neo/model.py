@@ -56,15 +56,11 @@ def backup(path):
         copy_file_or_directory(path, backup)
 
 
-# TODO save group metadata
-# TODO save metadata
 # TODO make klustaexdir script that takes rawdata files and saves to exdir
 # TODO check masks
-# TODO load features and masks if exdir and exists
+# TODO probefile
 # TODO save probe info in exdir
 # TODO test if sorting spike times messes up anything
-# TODO more carefully only save what is saved
-# TODO recluster names group unsorted with small u
 
 
 class NeoModel(object):
@@ -96,7 +92,7 @@ class NeoModel(object):
                             self.output_ext)
         try:
             io = neo.get_io(save_path, mode=self.mode)
-        except IOError: # cannot use mode
+        except Exception: # cannot use mode
             try: # without mode
                 io = neo.get_io(save_path)
             except FileNotFoundError: # file must be made, assuming this io cannot write
@@ -135,10 +131,8 @@ class NeoModel(object):
                                               self.output_ext)
         # backup(self.save_path)
         logger.debug('Saving output data to {}'.format(self.save_path))
-        io = neo.get_io(self.data_path)
-        assert io.is_readable
 
-        self.load_data(io)
+        self.load_data()
 
     def describe(self):
         def _print(name, value):
@@ -151,7 +145,9 @@ class NeoModel(object):
         _print('Number of spikes', self.n_spikes)
         _print('Available channel groups', self.channel_groups)
 
-    def load_data(self, io, channel_group=None, segment_num=None):
+    def load_data(self, channel_group=None, segment_num=None):
+        io = neo.get_io(self.data_path)
+        assert io.is_readable
         self.channel_group = channel_group or self.channel_group
         self.segment_num = segment_num or self.segment_num
         if self.segment_num is None:
@@ -271,7 +267,10 @@ class NeoModel(object):
             seg.spiketrains.append(sptr)
 
         # save block to file
-        io = neo.get_io(self.save_path, mode=self.mode)
+        try:
+            io = neo.get_io(self.save_path, mode=self.mode)
+        except Exception:
+            io = neo.get_io(self.save_path)
         io.write_block(blk)
         if hasattr(io, 'close'):
             io.close()
