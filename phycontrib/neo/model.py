@@ -71,6 +71,8 @@ class NeoModel(object):
                  mode=False, kk2_params=None, **kwargs):
         self.feature_type = 'pca'
         self.data_path = op.abspath(data_path)
+        if not op.exists(self.data_path):
+            raise FileNotFoundError('Data path does not exist')
         self.segment_num = segment_num
         self.channel_group = channel_group
         self.output_dir = output_dir
@@ -131,7 +133,6 @@ class NeoModel(object):
                                               self.output_ext)
         # backup(self.save_path)
         logger.debug('Saving output data to {}'.format(self.save_path))
-
         self.load_data()
 
     def describe(self):
@@ -147,6 +148,7 @@ class NeoModel(object):
 
     def load_data(self, channel_group=None, segment_num=None):
         io = neo.get_io(self.data_path)
+        print(self.data_path)
         assert io.is_readable
         self.channel_group = channel_group or self.channel_group
         self.segment_num = segment_num or self.segment_num
@@ -256,11 +258,12 @@ class NeoModel(object):
                                   t_stop=self.duration,
                                   t_start=self.start_time,
                                   **{'cluster_id': sc,
-                                     'cluster_group': groups[sc].lower(),
+                                     'cluster_group': self.cluster_groups[sc].lower(),
                                      'kk2_metadata': self.kk2_metadata})
             sptr.channel_index = chx
             unt = neo.Unit(name='Unit #{}'.format(sc),
-                           **{'cluster_id': sc, 'cluster_group': groups[sc].lower()})
+                           **{'cluster_id': sc,
+                              'cluster_group': self.cluster_groups[sc].lower()})
             unt.spiketrains.append(sptr)
             chx.units.append(unt)
             seg.spiketrains.append(sptr)
