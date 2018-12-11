@@ -177,8 +177,9 @@ class NeoController(EventEmitter):
         channel_id = channel_ids[np.argmin(amps)]
         return channel_id
 
-    def get_best_channels(self, cluster_ids):  # TODO
-        return np.arange(self.model.n_chans)
+    def get_best_channels(self, cluster_ids):  #TODO
+        channel_ids = np.arange(self.model.n_chans)
+        return channel_ids
 
     def get_cluster_position(self, cluster_id):
         channel_id = self.get_best_channel(cluster_id)
@@ -265,7 +266,9 @@ class NeoController(EventEmitter):
         # Use the best channels only if a cluster is specified and
         # channels are not specified.
         if cluster_id is not None and channel_ids is None:
-            channel_ids = self.get_best_channels(cluster_id)
+            # channel_ids = self.get_best_channels(cluster_id)
+            amps = self._get_mean_waveforms(cluster_id).data[0].min(axis=0)
+            channel_ids = np.argsort(amps)
         f = self.model.features[spike_ids][:, channel_ids]
         m = self.model.masks[spike_ids][:, channel_ids]
         return Bunch(data=f,
