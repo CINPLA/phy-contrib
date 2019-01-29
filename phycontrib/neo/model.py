@@ -289,7 +289,7 @@ class NeoModel(object):
     def save_features_masks(self, spike_clusters):
         # for saving phy data directly to disc
         feat = self._exdir_save_group.require_group('FeatureExtraction')
-        feat.attrs['electrode_idx'] = self.chx.index
+        feat.attrs['electrode_idx'] = self.chx.index.tolist()
         dset = feat.require_dataset('data', data=self.features)
         dset.attrs['feature_type'] = self.feature_type
         dset.attrs['num_samples'] = self.features.shape[0]
