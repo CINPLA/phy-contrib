@@ -147,6 +147,16 @@ class NeoController(object):
                                 )
 
         @connect(sender=supervisor)
+        def on_attach_gui(sender):
+            @supervisor.actions.add(shortcut='shift+ctrl+k')
+            def split_init(cluster_ids=None):
+                """Split a cluster according to the original templates."""
+                if cluster_ids is None:
+                    cluster_ids = supervisor.selected
+                s = supervisor.clustering.spikes_in_clusters(cluster_ids)
+                supervisor.actions.split(s, self.model.spike_templates[s])
+
+        @connect(sender=supervisor)
         def on_create_cluster_views():
 
             supervisor.add_column(self.get_best_channel, name='channel')
@@ -337,10 +347,10 @@ class NeoController(object):
         y = m.amplitudes[spike_ids, channel_id]
         return Bunch(x=x, y=y, data_bounds=(0., y.min(), m.duration, y.max()))
 
-    def add_amplitude_view(self, gui):
-        v = AmplitudeView(coords=self._get_amplitudes,
-                          )
-        return self._add_view(gui, v)
+    # def add_amplitude_view(self, gui):
+    #     v = AmplitudeView(coords=self._get_amplitudes,
+    #                       )
+    #     return self._add_view(gui, v)
 
     # GUI
     # -------------------------------------------------------------------------
@@ -357,12 +367,12 @@ class NeoController(object):
         if self.model.features is not None:
             self.add_feature_view(gui)
         self.add_correlogram_view(gui)
-        if self.model.amplitudes is not None:
-            self.add_amplitude_view(gui)
+        # if self.model.amplitudes is not None:
+        #     self.add_amplitude_view(gui)
 
         # Save the memcache when closing the GUI.
-        @connect(sender=supervisor)
-        def on_close():
+        @connect(sender=gui)
+        def on_close(sender):
             self.context.save_memcache()
 
         emit('gui_ready', gui)
