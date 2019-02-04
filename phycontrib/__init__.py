@@ -13,6 +13,7 @@ import os.path as op
 import shutil
 
 from .kwik import *  # noqa
+from .neo import *
 from .template import *  # noqa
 from .views import *  # noqa
 from . import utils  # noqa
@@ -51,6 +52,7 @@ def _copy_gui_state(gui_name, module_name, config_dir=None):
 def _copy_all_gui_states():
     _copy_gui_state('KwikGUI', 'kwik')
     _copy_gui_state('TemplateGUI', 'template')
+    _copy_gui_state('NeoGUI', 'neo')
 
 
 # Copy default states when importing the package.

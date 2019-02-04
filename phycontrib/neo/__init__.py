@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 
-"""Template GUI."""
+"""NEO GUI."""
 
 
 #------------------------------------------------------------------------------
 # Imports
 #------------------------------------------------------------------------------
 
-from .gui import TemplateGUIPlugin, TemplateController  # noqa
-# from .backup import BackupPlugin  # noqa
+from .gui import NeoGUIPlugin, NeoController  # noqa
+from .neo_klusta import NeoKlusta
