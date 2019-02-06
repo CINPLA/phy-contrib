@@ -224,6 +224,9 @@ class NeoModel(object):
         ch_pos[:, 1] = np.arange(self.n_chans)
         self.channel_positions = ch_pos
 
+        # print('SHAPES: ', self.spike_times.shape, self.spike_clusters.shape, self.cluster_groups, self.waveforms.shape,
+        #       self.features.shape, self.masks.shape, self.amplitudes.shape, self.channel_positions.shape)
+
     def save(self, spike_clusters=None, groups=None, *labels):
         if spike_clusters is None:
             spike_clusters = self.spike_clusters
@@ -248,6 +251,7 @@ class NeoModel(object):
             wf_units = pq.dimensionless
         clusters = np.unique(spike_clusters)
         self.cluster_groups = groups or self.cluster_groups
+
         for sc in clusters:
             mask = self.spike_clusters == sc
             waveforms = np.swapaxes(self.waveforms[mask], 1, 2) * wf_units

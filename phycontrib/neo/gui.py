@@ -177,7 +177,7 @@ class NeoController(object):
 
         # Save.
         @connect(sender=supervisor)
-        def on_request_save(spike_clusters, groups, *labels):
+        def on_request_save(sender, spike_clusters, groups, *labels):
             """Save the modified data."""
             # Save the clusters.
             groups = {c: g.title() for c, g in groups.items()}
@@ -219,14 +219,18 @@ class NeoController(object):
     def similarity(self, cluster_id):
         """Return the list of similar clusters to a given cluster."""
 
-        pos_i = self.get_cluster_position(cluster_id)
-        
-        def _sim_ij(cj):
-            """Distance between channel position of clusters i and j."""
-            pos_j = self.get_cluster_position(cj)
-            d = np.sqrt(np.sum((pos_j - pos_i) ** 2))
-            return self.distance_max - d
-        out = [(cj, _sim_ij(cj))
+        m_wf_i = np.squeeze(self._get_mean_waveforms(cluster_id).data)
+        print('mwf shape: ', m_wf_i.data.shape)
+
+        # #TODO fix this (for tetrodes distance is stupid)
+        def _sim_ij(m_wf_j):
+            t_i_lin = m_wf_i.reshape(m_wf_i.shape[0] * m_wf_i.shape[1])
+            t_j_lin = m_wf_j.reshape(m_wf_j.shape[0] * m_wf_j.shape[1])
+            a = np.corrcoef(t_i_lin, t_j_lin)
+            similarity = np.abs(a[0, 1])
+            return similarity
+
+        out = [(cj, _sim_ij(np.squeeze(self._get_mean_waveforms(cj).data)))
                for cj in self.supervisor.clustering.cluster_ids]
         return sorted(out, key=itemgetter(1), reverse=True)
 
