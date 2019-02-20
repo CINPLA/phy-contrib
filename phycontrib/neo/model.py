@@ -19,11 +19,6 @@ try:
 except Exception:
     HAVE_NIX = False
 
-from phy.io.array import (_concatenate_virtual_arrays,
-                          _index_of,
-                          _spikes_in_clusters,
-                          )
-
 logger = logging.getLogger(__name__)
 
 try:
@@ -156,7 +151,7 @@ class NeoModel(object):
             self.segment_num = 0  # TODO find the right seg num
         if neo.Block in io.readable_objects:
             logger.info('Loading block')
-            blk = io.read_block()  # TODO params to select what to read
+            blk = io.read_block(channel_group_idx=self.channel_group)  # TODO params to select what to read
             try:
                 io.close()
             except:
@@ -214,7 +209,7 @@ class NeoModel(object):
         self.waveforms = self._load_waveforms()[sorted_idxs, :, :]
         assert self.waveforms.shape[::2] == (ns, self.n_chans), '{} != {}'.format(self.waveforms.shape[::2], (ns, self.n_chans))
 
-        self.features, self.masks = self._load_features_masks() # loads from waveforms which is already sorted
+        self.features, self.masks = self._load_features_masks()  # loads from waveforms which is already sorted
 
         self.amplitudes = self._load_amplitudes()
         assert self.amplitudes.shape == (ns, self.n_chans)

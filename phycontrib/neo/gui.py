@@ -94,7 +94,7 @@ def _get_distance_max(pos):
 class NeoController(object):
     gui_name = 'NeoGUI'
 
-    n_spikes_waveforms = 200
+    n_spikes_waveforms = 1000
     batch_size_waveforms = 200
 
     n_spikes_features = 10000
@@ -220,9 +220,7 @@ class NeoController(object):
         """Return the list of similar clusters to a given cluster."""
 
         m_wf_i = np.squeeze(self._get_mean_waveforms(cluster_id).data)
-        print('mwf shape: ', m_wf_i.data.shape)
 
-        # #TODO fix this (for tetrodes distance is stupid)
         def _sim_ij(m_wf_j):
             t_i_lin = m_wf_i.reshape(m_wf_i.shape[0] * m_wf_i.shape[1])
             t_j_lin = m_wf_j.reshape(m_wf_j.shape[0] * m_wf_j.shape[1])
