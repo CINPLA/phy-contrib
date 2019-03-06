@@ -375,7 +375,8 @@ class NeoController(object):
         # Save the memcache when closing the GUI.
         @connect(sender=gui)
         def on_close(sender):
-            self.context.save_memcache()
+            # self.context.save_memcache()
+            shutil.rmtree(self.cache_dir, ignore_errors=True)
 
         emit('gui_ready', gui)
 
