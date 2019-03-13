@@ -320,6 +320,7 @@ class NeoController(object):
                                                 self.n_spikes_correlograms,
                                                 subset='random',
                                                 )
+        spike_ids = spike_ids[spike_ids < len(self.model.spike_times)]
         st = self.model.spike_times[spike_ids]
         sc = self.supervisor.clustering.spike_clusters[spike_ids]
         return correlograms(st,
